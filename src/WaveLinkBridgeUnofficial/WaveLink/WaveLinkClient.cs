@@ -989,23 +989,36 @@ public sealed class WaveLinkClient : IAsyncDisposable
 
 	private static async Task<int> DiscoverPortAsync(CancellationToken cancellationToken)
 	{
+		// The file port goes stale when Wave Link restarts (or stays behind after it exits,
+		// where the OS can park an unrelated listener on the number), so it is only a hint:
+		// it must answer a WebSocket probe before it is trusted.
 		string? fromFile = ReadPortFile();
-		if (fromFile is not null && int.TryParse(fromFile, out int filePort))
+		if (fromFile is not null
+			&& int.TryParse(fromFile, out int filePort)
+			&& await ProbePortAsync(filePort, cancellationToken).ConfigureAwait(false))
 		{
 			return filePort;
 		}
 
+		var scans = new List<Task<int?>>();
 		for (int port = 1884; port <= 1893; port++)
 		{
-			cancellationToken.ThrowIfCancellationRequested();
-			if (await ProbePortAsync(port, cancellationToken).ConfigureAwait(false))
+			scans.Add(ScanAsync(port, cancellationToken));
+		}
+
+		foreach (int? found in await Task.WhenAll(scans).ConfigureAwait(false))
+		{
+			if (found.HasValue)
 			{
-				return port;
+				return found.Value;
 			}
 		}
 
-		throw new WaveLinkNotConnectedException("Wave Link was not found (ws-info.json is missing and no fallback port answered). Is Wave Link running?");
+		throw new WaveLinkNotConnectedException("Wave Link was not found (ws-info.json is missing or stale and no fallback port answered). Is Wave Link running?");
 	}
+
+	private static async Task<int?> ScanAsync(int port, CancellationToken cancellationToken) =>
+		await ProbePortAsync(port, cancellationToken).ConfigureAwait(false) ? port : null;
 
 	private static string? ReadPortFile()
 	{
@@ -1044,6 +1057,10 @@ public sealed class WaveLinkClient : IAsyncDisposable
 			using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
 			await socket.ConnectAsync(new Uri($"ws://127.0.0.1:{port}"), linked.Token).ConfigureAwait(false);
 			return true;
+		}
+		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+		{
+			throw;
 		}
 		catch (Exception)
 		{
