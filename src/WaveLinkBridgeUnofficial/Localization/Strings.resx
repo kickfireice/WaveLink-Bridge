@@ -3,7 +3,7 @@
   <!-- The default-language file. Every translation is checked against it and the fallback chain ends
        here, so it is required even for a plugin that ships one language. Add a language by adding
        Localization/Strings.<culture>.resx beside it (Strings.de.resx, Strings.pt-BR.resx).
-       A dotted key becomes a nested class: Actions.LogMessage.Name is Strings.Actions.LogMessage.Name(). -->
+       A dotted key becomes a nested class: Actions.SetChannelVolume.Name is Strings.Actions.SetChannelVolume.Name(). -->
   <resheader name="resmimetype">
     <value>text/microsoft-resx</value>
   </resheader>
@@ -16,19 +16,241 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Actions.LogMessage.Name" xml:space="preserve">
-    <value>Write log message</value>
+  <data name="Actions.SetChannelVolume.Name" xml:space="preserve">
+    <value>Set channel volume</value>
   </data>
-  <data name="Actions.LogMessage.Description" xml:space="preserve">
-    <value>Writes a message to the Macro Deck log.</value>
+  <data name="Actions.SetChannelVolume.Description" xml:space="preserve">
+    <value>Sets the volume of a Wave Link channel, for one mix or overall.</value>
   </data>
-  <data name="Actions.LogMessage.Message.Label" xml:space="preserve">
-    <value>Message</value>
+  <data name="Actions.AdjustChannelVolume.Name" xml:space="preserve">
+    <value>Adjust channel volume</value>
   </data>
-  <data name="Actions.LogMessage.Message.Description" xml:space="preserve">
-    <value>The text to write to the log.</value>
+  <data name="Actions.AdjustChannelVolume.Description" xml:space="preserve">
+    <value>Raises or lowers a Wave Link channel by a fixed amount.</value>
   </data>
-  <data name="Actions.LogMessage.Message.Placeholder" xml:space="preserve">
-    <value>Hello from my plugin</value>
+  <data name="Actions.ToggleChannelMute.Name" xml:space="preserve">
+    <value>Mute channel</value>
+  </data>
+  <data name="Actions.ToggleChannelMute.Description" xml:space="preserve">
+    <value>Mutes, unmutes or toggles a Wave Link channel, for one mix or overall.</value>
+  </data>
+  <data name="Actions.SetMixVolume.Name" xml:space="preserve">
+    <value>Set mix volume</value>
+  </data>
+  <data name="Actions.SetMixVolume.Description" xml:space="preserve">
+    <value>Sets the master volume of a Wave Link mix.</value>
+  </data>
+  <data name="Actions.ToggleMixMute.Name" xml:space="preserve">
+    <value>Mute mix</value>
+  </data>
+  <data name="Actions.ToggleMixMute.Description" xml:space="preserve">
+    <value>Mutes, unmutes or toggles the master mute of a Wave Link mix.</value>
+  </data>
+  <data name="Actions.ToggleChannelFx.Name" xml:space="preserve">
+    <value>Toggle channel effect</value>
+  </data>
+  <data name="Actions.ToggleChannelFx.Description" xml:space="preserve">
+    <value>Enables, disables or toggles an effect on a Wave Link channel.</value>
+  </data>
+  <data name="Actions.SetInputGain.Name" xml:space="preserve">
+    <value>Set input gain</value>
+  </data>
+  <data name="Actions.SetInputGain.Description" xml:space="preserve">
+    <value>Sets the gain and mute of a Wave Link input device.</value>
+  </data>
+  <data name="Actions.SetOutput.Name" xml:space="preserve">
+    <value>Set output</value>
+  </data>
+  <data name="Actions.SetOutput.Description" xml:space="preserve">
+    <value>Sets an output volume and mute, and can make it the main output.</value>
+  </data>
+  <data name="Actions.ShowStatus.Name" xml:space="preserve">
+    <value>Show Wave Link status</value>
+  </data>
+  <data name="Actions.ShowStatus.Description" xml:space="preserve">
+    <value>Shows connection state, counters and recent events for troubleshooting.</value>
+  </data>
+  <data name="Fields.Channel.Label" xml:space="preserve">
+    <value>Channel</value>
+  </data>
+  <data name="Fields.Channel.Description" xml:space="preserve">
+    <value>The Wave Link channel to control. A raw channel id can be typed in.</value>
+  </data>
+  <data name="Fields.Channel.Placeholder" xml:space="preserve">
+    <value>Discord</value>
+  </data>
+  <data name="Fields.Mix.Label" xml:space="preserve">
+    <value>Mix</value>
+  </data>
+  <data name="Fields.Mix.Description" xml:space="preserve">
+    <value>Overall for the channel master, All mixes for every mix, or one mix.</value>
+  </data>
+  <data name="Fields.Mix.Overall" xml:space="preserve">
+    <value>Overall (master)</value>
+  </data>
+  <data name="Fields.Mix.Both" xml:space="preserve">
+    <value>All mixes</value>
+  </data>
+  <data name="Fields.Volume.Label" xml:space="preserve">
+    <value>Volume</value>
+  </data>
+  <data name="Fields.Volume.Description" xml:space="preserve">
+    <value>Volume in percent, 0 to 100.</value>
+  </data>
+  <data name="Fields.Delta.Label" xml:space="preserve">
+    <value>Change</value>
+  </data>
+  <data name="Fields.Delta.Description" xml:space="preserve">
+    <value>How much to raise (positive) or lower (negative) the volume, in percent.</value>
+  </data>
+  <data name="Fields.MuteMode.Label" xml:space="preserve">
+    <value>Mode</value>
+  </data>
+  <data name="Fields.MuteMode.Description" xml:space="preserve">
+    <value>Whether to toggle, mute, unmute, or leave the mute state alone.</value>
+  </data>
+  <data name="Fields.MuteMode.Toggle" xml:space="preserve">
+    <value>Toggle</value>
+  </data>
+  <data name="Fields.MuteMode.Mute" xml:space="preserve">
+    <value>Mute</value>
+  </data>
+  <data name="Fields.MuteMode.Unmute" xml:space="preserve">
+    <value>Unmute</value>
+  </data>
+  <data name="Fields.MuteMode.Leave" xml:space="preserve">
+    <value>Leave unchanged</value>
+  </data>
+  <data name="Fields.Effect.Label" xml:space="preserve">
+    <value>Effect</value>
+  </data>
+  <data name="Fields.Effect.Description" xml:space="preserve">
+    <value>The effect on the selected channel. A raw effect id can be typed in.</value>
+  </data>
+  <data name="Fields.Effect.DisabledSuffix" xml:space="preserve">
+    <value> (off)</value>
+  </data>
+  <data name="Fields.FxMode.Label" xml:space="preserve">
+    <value>Mode</value>
+  </data>
+  <data name="Fields.FxMode.Description" xml:space="preserve">
+    <value>Whether to toggle, enable or disable the effect.</value>
+  </data>
+  <data name="Fields.FxMode.Toggle" xml:space="preserve">
+    <value>Toggle</value>
+  </data>
+  <data name="Fields.FxMode.Enable" xml:space="preserve">
+    <value>Enable</value>
+  </data>
+  <data name="Fields.FxMode.Disable" xml:space="preserve">
+    <value>Disable</value>
+  </data>
+  <data name="Fields.Input.Label" xml:space="preserve">
+    <value>Input</value>
+  </data>
+  <data name="Fields.Input.Description" xml:space="preserve">
+    <value>The Wave Link input device and input to control.</value>
+  </data>
+  <data name="Fields.Gain.Label" xml:space="preserve">
+    <value>Gain</value>
+  </data>
+  <data name="Fields.Gain.Description" xml:space="preserve">
+    <value>Input gain in percent, 0 to 100. Empty leaves the gain alone.</value>
+  </data>
+  <data name="Fields.Output.Label" xml:space="preserve">
+    <value>Output</value>
+  </data>
+  <data name="Fields.Output.Description" xml:space="preserve">
+    <value>The Wave Link output device and output to control.</value>
+  </data>
+  <data name="Fields.SetAsMain.Label" xml:space="preserve">
+    <value>Set as main output</value>
+  </data>
+  <data name="Fields.SetAsMain.Description" xml:space="preserve">
+    <value>Switches Wave Link to this output device.</value>
+  </data>
+  <data name="Errors.NotConnected" xml:space="preserve">
+    <value>Wave Link is not connected. Start Wave Link and try again.</value>
+  </data>
+  <data name="Errors.WaveLinkNotRunning" xml:space="preserve">
+    <value>Wave Link is not running.</value>
+  </data>
+  <data name="Errors.TimedOut" xml:space="preserve">
+    <value>Wave Link did not answer in time.</value>
+  </data>
+  <data name="Errors.CommandFailed" xml:space="preserve">
+    <value>The Wave Link command failed. See Show Wave Link status for details.</value>
+  </data>
+  <data name="Errors.OptionsFailed" xml:space="preserve">
+    <value>The options could not be loaded.</value>
+  </data>
+  <data name="Errors.ChannelNotFound" xml:space="preserve">
+    <value>Channel {value} was not found.</value>
+  </data>
+  <data name="Errors.MixNotFound" xml:space="preserve">
+    <value>Mix {value} was not found.</value>
+  </data>
+  <data name="Errors.EffectNotFound" xml:space="preserve">
+    <value>Effect {value} was not found.</value>
+  </data>
+  <data name="Errors.InputNotFound" xml:space="preserve">
+    <value>Input {value} was not found.</value>
+  </data>
+  <data name="Errors.OutputNotFound" xml:space="preserve">
+    <value>Output {value} was not found.</value>
+  </data>
+  <data name="Errors.NotFound" xml:space="preserve">
+    <value>{value} was not found.</value>
+  </data>
+  <data name="Errors.UnknownParameter" xml:space="preserve">
+    <value>Unknown parameter {value}.</value>
+  </data>
+  <data name="Variables.Connected.DisplayName" xml:space="preserve">
+    <value>Wave Link connected</value>
+  </data>
+  <data name="Variables.Connected.Description" xml:space="preserve">
+    <value>Whether WaveLink Bridge currently reaches Wave Link.</value>
+  </data>
+  <data name="Variables.Version.DisplayName" xml:space="preserve">
+    <value>Wave Link version</value>
+  </data>
+  <data name="Variables.Version.Description" xml:space="preserve">
+    <value>The Wave Link version reported by the app.</value>
+  </data>
+  <data name="Variables.ChannelCount.DisplayName" xml:space="preserve">
+    <value>Wave Link channel count</value>
+  </data>
+  <data name="Variables.ChannelCount.Description" xml:space="preserve">
+    <value>How many Wave Link channels are currently known.</value>
+  </data>
+  <data name="Variables.ReadOnly" xml:space="preserve">
+    <value>This variable is read-only.</value>
+  </data>
+  <data name="Status.Title" xml:space="preserve">
+    <value>WaveLink Bridge status</value>
+  </data>
+  <data name="Status.Connected" xml:space="preserve">
+    <value>Connected (Wave Link {version})</value>
+  </data>
+  <data name="Status.NotConnected" xml:space="preserve">
+    <value>Not connected ({reason})</value>
+  </data>
+  <data name="Status.Counts" xml:space="preserve">
+    <value>{channels} channels, {mixes} mixes, {inputs} inputs, {outputs} outputs</value>
+  </data>
+  <data name="Status.Calls" xml:space="preserve">
+    <value>RPC calls: {calls} ({ok} ok, {fail} failed)</value>
+  </data>
+  <data name="Status.Sessions" xml:space="preserve">
+    <value>Connections: {connects}, drops: {drops}</value>
+  </data>
+  <data name="Status.SessionAge" xml:space="preserve">
+    <value>Session age: {age}</value>
+  </data>
+  <data name="Status.LastError" xml:space="preserve">
+    <value>Last error: {error}</value>
+  </data>
+  <data name="Status.Recent" xml:space="preserve">
+    <value>Recent events:</value>
   </data>
 </root>
