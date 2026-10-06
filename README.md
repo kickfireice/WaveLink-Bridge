@@ -86,11 +86,23 @@ so buttons survive renames and stay copy-pasteable between profiles.
 | Variable | Type | Meaning |
 |---|---|---|
 | `{{ vars.wavelink_connected }}` | boolean | whether the plugin currently reaches Wave Link |
-| `{{ vars.wavelink_version }}` | text | Wave Link version, e.g. `3.0.0.2388` |
+| `{{ vars.wavelink_version }}` | text | Wave Link version, e.g. `3.3.0.4529` |
 | `{{ vars.wavelink_channel_count }}` | number | how many channels Wave Link currently reports |
 
-All three are read-only and polled by the host. Unknown ids read as
+The three above are read-only and polled by the host. Unknown ids read as
 unavailable, never as a faked empty value.
+
+### Slider binding (two-way volume)
+
+Each channel also appears in the variable browser as `wavelink_vol_<channel>`
+(number, 0–100, writable): **bind the Slider widget to it** (BINDING → Variable)
+and sliding drives Wave Link directly, while the slider follows outside changes
+(Wave Link UI, other buttons) within seconds. No action needed on the slider —
+use its tap events for extras (e.g. Double Tap → *Mute channel*).
+
+Channel volumes are overall (master) volumes. Per-mix control stays on the
+actions. Do not feed a slider's absolute value into *Adjust channel volume* —
+that action takes a relative nudge; use *Set channel volume* for absolute values.
 
 ## Privacy and data handling
 
@@ -114,9 +126,11 @@ unavailable, never as a faked empty value.
   path waits ~8 s for Wave Link to come back and retries once; only then does it
   fail. Passive state stays instant.
 - Wave Link picks a **new port every launch**; a stale port is never trusted —
-  the plugin re-discovers it each time it reconnects.
-- No per-channel slider binding yet: volume sliders live on the actions, and
-  per-channel variables would need a variable catalog (planned, not in v1).
+  the plugin re-discovers it each time it reconnects, and pings every 15 s so
+  idle connections are not closed.
+- Channel bindings survive restarts: a channel that is merely gone reads as
+  unavailable and resumes on its own; only an id that never named a channel is
+  dropped.
 
 ## Repository layout
 

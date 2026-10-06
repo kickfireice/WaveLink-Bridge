@@ -90,6 +90,80 @@ public sealed class WaveLinkClient : IAsyncDisposable
 		}
 	}
 
+	/// <summary>Raised after the cache changes (notification merge or refresh). Handlers must never
+	/// throw; a throwing handler is logged and dropped so the connection loop survives.</summary>
+	public event Action? SnapshotChanged;
+
+	private readonly Dictionary<string, string> _knownChannels = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>Every channel id ever seen with its last-known name. Never shrinks except on a full
+	/// replace, so bindings keep resolving while Wave Link is away.</summary>
+	public IReadOnlyList<KeyValuePair<string, string>> KnownChannels()
+	{
+		lock (_cacheLock)
+		{
+			return [.. _knownChannels];
+		}
+	}
+
+	public bool IsChannelKnown(string channelId)
+	{
+		lock (_cacheLock)
+		{
+			return _knownChannels.ContainsKey(channelId);
+		}
+	}
+
+	/// <summary>Overall channel volume in percent, falling back to the mean of known mix levels.</summary>
+	public double? TryGetChannelVolumePercent(string channelId)
+	{
+		lock (_cacheLock)
+		{
+			var channel = _snapshot?.Channels.FirstOrDefault(c =>
+				string.Equals(c.Id, channelId, StringComparison.OrdinalIgnoreCase));
+			if (channel is null)
+			{
+				return null;
+			}
+
+			if (channel.Level.HasValue)
+			{
+				return channel.Level.Value * 100;
+			}
+
+			var mixLevels = channel.Mixes.Where(m => m.Level.HasValue).Select(m => m.Level!.Value).ToList();
+			return mixLevels.Count > 0 ? mixLevels.Average() * 100 : null;
+		}
+	}
+
+	private void NoteChannels(Snapshot snapshot, bool fullReplace)
+	{
+		lock (_cacheLock)
+		{
+			if (fullReplace)
+			{
+				_knownChannels.Clear();
+			}
+
+			foreach (var channel in snapshot.Channels)
+			{
+				_knownChannels[channel.Id] = channel.Name;
+			}
+		}
+	}
+
+	private void RaiseSnapshotChanged()
+	{
+		try
+		{
+			SnapshotChanged?.Invoke();
+		}
+		catch (Exception ex)
+		{
+			_logger.Debug(ex, "A Wave Link change handler failed and was dropped.");
+		}
+	}
+
 	private bool _connected;
 
 	public Task StartAsync()
@@ -665,6 +739,9 @@ public sealed class WaveLinkClient : IAsyncDisposable
 		{
 			_snapshot = snapshot;
 		}
+
+		NoteChannels(snapshot, fullReplace: true);
+		RaiseSnapshotChanged();
 	}
 
 	private async Task<JsonElement> RpcAsync(string method, JsonNode? parameters, CancellationToken cancellationToken)
@@ -1004,7 +1081,12 @@ public sealed class WaveLinkClient : IAsyncDisposable
 			};
 
 			_remember(method);
+
+			bool fullReplace = string.Equals(method, "channelsChanged", StringComparison.Ordinal);
+			NoteChannels(_snapshot, fullReplace);
 		}
+
+		RaiseSnapshotChanged();
 	}
 
 	private static Snapshot ApplyOutputDevices(Snapshot snapshot, JsonElement @params)

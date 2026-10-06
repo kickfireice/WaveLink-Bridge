@@ -1,3 +1,4 @@
+using System.Globalization;
 using MacroDeck.Sdk;
 using MacroDeck.Sdk.Actions;
 using MacroDeck.Sdk.Variables;
@@ -9,18 +10,24 @@ namespace WaveLinkBridgeUnofficial;
 
 /// <summary>
 /// The plugin's one integration. It owns the <see cref="WaveLinkClient"/> (cheap to construct: no
-/// socket opens until <see cref="InitializeAsync"/>) and declares every action and variable.
-/// Eager variables are polled by the host, so there is no push surface in v1.
+/// socket opens until <see cref="InitializeAsync"/>) and declares every action, the eager variables,
+/// and a per-channel volume catalog so Slider widgets bind two-way.
+/// Eager variables are polled by the host; catalog values are pushed while bound.
 /// </summary>
 public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, IAsyncDisposable
 {
 	private readonly WaveLinkClient _client;
 	private readonly ILogger _logger;
+	private readonly object _sync = new();
+	private IVariableSink? _sink;
+	private HashSet<string> _subscribed = new(StringComparer.Ordinal);
+	private HashSet<string> _pushedChannelSet = new(StringComparer.OrdinalIgnoreCase);
 
 	public PluginIntegration(ILogger logger)
 	{
 		_logger = logger.ForContext<PluginIntegration>();
 		_client = new WaveLinkClient(logger);
+		_client.SnapshotChanged += OnWaveLinkChanged;
 		Actions =
 		[
 			new SetChannelVolumeAction(_client, logger),
@@ -49,7 +56,11 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 
 	public Task ShutdownAsync() => _client.StopAsync();
 
-	public async ValueTask DisposeAsync() => await _client.DisposeAsync().ConfigureAwait(false);
+	public async ValueTask DisposeAsync()
+	{
+		_client.SnapshotChanged -= OnWaveLinkChanged;
+		await _client.DisposeAsync().ConfigureAwait(false);
+	}
 
 	public IReadOnlyList<VariableDefinition> Variables { get; } =
 	[
@@ -73,23 +84,125 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 		},
 	];
 
-	/// <summary>Accepts every id form defensively: short, name, and <c>vars.</c>-prefixed.</summary>
+	public bool SupportsCatalog => true;
+
+	public bool SupportsPush => true;
+
+	public bool SupportsSearch => true;
+
+	public string CatalogName => "WaveLink";
+
+	/// <summary>Accepts every id form defensively: short, name, and <c>vars.</c>-prefixed. Channel
+	/// catalog ids are Wave Link channel ids and read the overall volume in percent.</summary>
 	public ValueTask<VariableReading> ReadAsync(string localId, CancellationToken cancellationToken = default)
 	{
 		string id = NormalizeVariableId(localId);
 		var (connected, version, channels) = _client.ReadStatus();
 
-		return ValueTask.FromResult(id switch
+		VariableReading reading = id switch
 		{
 			"connected" => VariableReading.Of(connected),
 			"version" => version is not null ? VariableReading.Of(version) : VariableReading.Unavailable,
 			"channel-count" => channels.HasValue ? VariableReading.Of(channels.Value) : VariableReading.Unavailable,
-			_ => VariableReading.Unavailable,
-		});
+			_ => ChannelVolumeReading(localId),
+		};
+		return ValueTask.FromResult(reading);
 	}
 
-	public ValueTask<VariableWriteResult> SetValueAsync(string localId, object? value, CancellationToken cancellationToken = default) =>
-		ValueTask.FromResult(VariableWriteResult.NotWritable(Strings.Variables.ReadOnly()));
+	public async ValueTask<VariableWriteResult> SetValueAsync(string localId, object? value, CancellationToken cancellationToken = default)
+	{
+		// Only catalog volumes declare Write; the host refuses anything else before it reaches here.
+		if (!_client.IsChannelKnown(localId))
+		{
+			return VariableWriteResult.NotFound(Strings.Variables.ChannelVolume.NotFound(localId));
+		}
+
+		if (!TryGetPercent(value, out double percent))
+		{
+			return VariableWriteResult.InvalidValue(Strings.Variables.ChannelVolume.InvalidValue());
+		}
+
+		try
+		{
+			await _client.SetChannelVolumeAsync(localId, WaveLinkClient.OverallMix, percent / 100, cancellationToken).ConfigureAwait(false);
+			return VariableWriteResult.Applied();
+		}
+		catch (WaveLinkNotConnectedException)
+		{
+			return VariableWriteResult.Unavailable(Strings.Errors.NotConnected());
+		}
+		catch (WaveLinkNotFoundException)
+		{
+			return VariableWriteResult.NotFound(Strings.Variables.ChannelVolume.NotFound(localId));
+		}
+		catch (Exception ex) when (ex is TimeoutException or WaveLinkRpcException)
+		{
+			_logger.Debug(ex, "A channel volume write failed transiently.");
+			return VariableWriteResult.Unavailable(Strings.Errors.TimedOut());
+		}
+	}
+
+	public ValueTask<VariableCatalogPage> DiscoverAsync(VariableCatalogQuery query, CancellationToken cancellationToken = default)
+	{
+		if (query.ParentId is not null)
+		{
+			return ValueTask.FromResult(VariableCatalogPage.Empty);
+		}
+
+		var names = ChannelVariableNames();
+		var items = names
+			.Where(entry => MatchesSearch(entry.Value, query.Search))
+			.Select(entry => ChannelVolumeDefinition(entry.Key, entry.Value))
+			.ToList();
+
+		const int defaultPageSize = 50;
+		int pageSize = query.PageSize > 0 ? query.PageSize : defaultPageSize;
+		int offset = 0;
+		if (query.ContinuationToken is not null)
+		{
+			int.TryParse(query.ContinuationToken, NumberStyles.None, CultureInfo.InvariantCulture, out offset);
+		}
+
+		var page = items.Skip(offset).Take(pageSize).ToList();
+		string? continuation = offset + page.Count < items.Count
+			? (offset + page.Count).ToString(CultureInfo.InvariantCulture)
+			: null;
+		return ValueTask.FromResult(new VariableCatalogPage { Items = page, ContinuationToken = continuation });
+	}
+
+	/// <summary>Null only for an id that never named a channel. A channel that is merely gone right
+	/// now still resolves, so the binding reads unavailable and resumes on its own.</summary>
+	public ValueTask<VariableDefinition?> ResolveAsync(string localId, CancellationToken cancellationToken = default)
+	{
+		var names = ChannelVariableNames();
+		return ValueTask.FromResult<VariableDefinition?>(
+			names.TryGetValue(localId, out string? name) ? ChannelVolumeDefinition(localId, name) : null);
+	}
+
+	/// <summary>Called with the complete set of bound ids every time it changes. Remembers the set for
+	/// push and answers with the values already at hand.</summary>
+	public ValueTask<IReadOnlyList<VariableValue>> SubscribeAsync(IReadOnlyCollection<string> localIds, CancellationToken cancellationToken = default)
+	{
+		lock (_sync)
+		{
+			_subscribed = new HashSet<string>(localIds, StringComparer.Ordinal);
+		}
+
+		var values = localIds
+			.Select(id => new VariableValue { Id = id, Reading = ChannelVolumeReading(id) })
+			.ToList();
+		return ValueTask.FromResult<IReadOnlyList<VariableValue>>(values);
+	}
+
+	public Task OnAttachedAsync(IVariableSink sink, CancellationToken cancellationToken = default)
+	{
+		lock (_sync)
+		{
+			_sink = sink;
+		}
+
+		return Task.CompletedTask;
+	}
 
 	private static string NormalizeVariableId(string localId)
 	{
@@ -105,5 +218,130 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 		}
 
 		return id.Replace('_', '-').ToLowerInvariant();
+	}
+
+	private VariableReading ChannelVolumeReading(string channelId)
+	{
+		double? percent = _client.TryGetChannelVolumePercent(channelId);
+		return percent.HasValue
+			? VariableReading.Of(percent.Value, 0, 100, 1)
+			: VariableReading.Unavailable;
+	}
+
+	private static bool TryGetPercent(object? value, out double percent)
+	{
+		switch (value)
+		{
+			case double d:
+				percent = d;
+				return true;
+			case float f:
+				percent = f;
+				return true;
+			case int i:
+				percent = i;
+				return true;
+			case long l:
+				percent = l;
+				return true;
+			default:
+				percent = 0;
+				return false;
+		}
+	}
+
+	/// <summary>Deterministic variable names over the known channels, so Discover and Resolve agree.</summary>
+	private Dictionary<string, string> ChannelVariableNames()
+	{
+		var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		var taken = new HashSet<string>(StringComparer.Ordinal);
+		foreach (var channel in _client.KnownChannels().OrderBy(c => c.Key, StringComparer.Ordinal))
+		{
+			string candidate = "wavelink_vol_" + SanitizeName(channel.Value);
+			string name = candidate;
+			int suffix = 2;
+			while (!taken.Add(name))
+			{
+				name = candidate + "_" + suffix.ToString(CultureInfo.InvariantCulture);
+				suffix++;
+			}
+
+			names[channel.Key] = name;
+		}
+
+		return names;
+	}
+
+	private static string SanitizeName(string channelName)
+	{
+		var builder = new System.Text.StringBuilder(channelName.Length);
+		foreach (char c in channelName.ToLowerInvariant())
+		{
+			builder.Append(c is >= 'a' and <= 'z' or >= '0' and <= '9' ? c : '_');
+		}
+
+		string sanitized = builder.ToString().Trim('_');
+		return sanitized.Length > 0 ? sanitized : "channel";
+	}
+
+	private static bool MatchesSearch(string variableName, string? search) =>
+		string.IsNullOrWhiteSpace(search) ||
+		variableName.Contains(search, StringComparison.OrdinalIgnoreCase);
+
+	private static VariableDefinition ChannelVolumeDefinition(string channelId, string variableName) =>
+		VariableDefinition.OnDemand(channelId, VariableType.Numeric) with
+		{
+			Name = variableName,
+			DisplayName = Strings.Variables.ChannelVolume.DisplayName(variableName),
+			Description = Strings.Variables.ChannelVolume.Description(variableName),
+			Unit = "%",
+			SemanticKind = VariableSemanticKinds.Percentage,
+			Write = new VariableWriteCapability(),
+		};
+
+	private void OnWaveLinkChanged()
+	{
+		IVariableSink? sink;
+		string[] ids;
+		lock (_sync)
+		{
+			sink = _sink;
+			ids = [.. _subscribed];
+		}
+
+		if (sink is null || ids.Length == 0)
+		{
+			return;
+		}
+
+		_ = PushChannelValuesAsync(sink, ids);
+	}
+
+	private async Task PushChannelValuesAsync(IVariableSink sink, string[] ids)
+	{
+		try
+		{
+			var values = ids
+				.Select(id => new VariableValue { Id = id, Reading = ChannelVolumeReading(id) })
+				.ToList();
+			await sink.PublishAsync(values, CancellationToken.None).ConfigureAwait(false);
+
+			var current = new HashSet<string>(_client.KnownChannels().Select(c => c.Key), StringComparer.OrdinalIgnoreCase);
+			bool membershipChanged;
+			lock (_sync)
+			{
+				membershipChanged = !current.SetEquals(_pushedChannelSet);
+				_pushedChannelSet = current;
+			}
+
+			if (membershipChanged)
+			{
+				await sink.InvalidateCatalogAsync().ConfigureAwait(false);
+			}
+		}
+		catch (Exception ex)
+		{
+			_logger.Debug(ex, "A channel volume push failed and was dropped.");
+		}
 	}
 }

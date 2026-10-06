@@ -1,6 +1,7 @@
 using MacroDeck.Plugin.Protocol.Capabilities.Actions;
 using MacroDeck.Plugin.Protocol.Capabilities.Variables;
 using MacroDeck.Plugin.Testing;
+using MacroDeck.Sdk.Variables;
 using NUnit.Framework;
 using Serilog;
 
@@ -90,6 +91,59 @@ public sealed class PluginIntegrationTests
 
 		Assert.That(fullName.Value, Is.EqualTo(shortForm.Value));
 		Assert.That(prefixed.Value, Is.EqualTo(shortForm.Value));
+	}
+
+	[Test]
+	public async Task Discover_answers_with_well_formed_items_whether_wave_link_is_up_or_not()
+	{
+		await using var integration = new PluginIntegration(new LoggerConfiguration().CreateLogger());
+
+		var page = await integration.DiscoverAsync(
+			new VariableCatalogQuery { PageSize = 50 }, TestContext.CurrentContext.CancellationToken);
+
+		Assert.That(page, Is.Not.Null);
+		Assert.That(page.Items.All(item => !string.IsNullOrEmpty(item.Id) && !string.IsNullOrEmpty(item.Name)), Is.True);
+	}
+
+	[Test]
+	public async Task Resolve_answers_null_only_for_ids_that_never_named_a_channel()
+	{
+		await using var integration = new PluginIntegration(new LoggerConfiguration().CreateLogger());
+
+		var resolved = await integration.ResolveAsync(
+			"definitely-not-a-channel", TestContext.CurrentContext.CancellationToken);
+
+		Assert.That(resolved, Is.Null);
+	}
+
+	[Test]
+	public async Task Writing_an_unknown_channel_variable_reports_not_found()
+	{
+		await using var harness = CreateHarness();
+		await harness.InitializeIntegrationsAsync();
+
+		var written = (await harness.Variables.SetAsync("definitely-not-a-channel",
+			new VariableValueDto { Kind = "number", Number = 50 })).DataAs<VariableSetResult>();
+
+		Assert.That(written!.Status, Is.EqualTo("NotFound"));
+	}
+
+	[Test]
+	public async Task Writing_text_to_a_channel_volume_reports_invalid_value()
+	{
+		await using var integration = new PluginIntegration(new LoggerConfiguration().CreateLogger());
+		var page = await integration.DiscoverAsync(
+			new VariableCatalogQuery { PageSize = 50 }, TestContext.CurrentContext.CancellationToken);
+		if (page.Items.Count == 0)
+		{
+			Assert.Pass("Wave Link has no channels right now, so there is nothing to write to.");
+			return;
+		}
+
+		var written = await integration.SetValueAsync(
+			page.Items[0].Id, "loud", TestContext.CurrentContext.CancellationToken);
+
+		Assert.That(written.Status.ToString(), Is.EqualTo("InvalidValue"));
 	}
 }
 
