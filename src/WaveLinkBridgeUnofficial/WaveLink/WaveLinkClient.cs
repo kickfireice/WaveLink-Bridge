@@ -94,15 +94,24 @@ public sealed class WaveLinkClient : IAsyncDisposable
 	/// throw; a throwing handler is logged and dropped so the connection loop survives.</summary>
 	public event Action? SnapshotChanged;
 
-	private readonly Dictionary<string, string> _knownChannels = new(StringComparer.OrdinalIgnoreCase);
+	private readonly Dictionary<string, KnownChannel> _knownChannels = new(StringComparer.OrdinalIgnoreCase);
+	private readonly Dictionary<string, string> _knownMixes = new(StringComparer.OrdinalIgnoreCase);
 
-	/// <summary>Every channel id ever seen with its last-known name. Never shrinks except on a full
-	/// replace, so bindings keep resolving while Wave Link is away.</summary>
-	public IReadOnlyList<KeyValuePair<string, string>> KnownChannels()
+	/// <summary>Every channel id ever seen with its last-known name and mix ids. Never shrinks except
+	/// on a full replace, so bindings keep resolving while Wave Link is away.</summary>
+	public IReadOnlyList<KnownChannel> KnownChannels()
 	{
 		lock (_cacheLock)
 		{
-			return [.. _knownChannels];
+			return [.. _knownChannels.Values];
+		}
+	}
+
+	public string KnownMixName(string mixId)
+	{
+		lock (_cacheLock)
+		{
+			return _knownMixes.TryGetValue(mixId, out string? name) ? name : mixId;
 		}
 	}
 
@@ -136,6 +145,18 @@ public sealed class WaveLinkClient : IAsyncDisposable
 		}
 	}
 
+	/// <summary>One mix's volume in percent, or null when unknown.</summary>
+	public double? TryGetChannelMixVolumePercent(string channelId, string mixId)
+	{
+		lock (_cacheLock)
+		{
+			var mix = _snapshot?.Channels
+				.FirstOrDefault(c => string.Equals(c.Id, channelId, StringComparison.OrdinalIgnoreCase))
+				?.Mixes.FirstOrDefault(m => string.Equals(m.MixId, mixId, StringComparison.OrdinalIgnoreCase));
+			return mix?.Level * 100;
+		}
+	}
+
 	private void NoteChannels(Snapshot snapshot, bool fullReplace)
 	{
 		lock (_cacheLock)
@@ -147,7 +168,24 @@ public sealed class WaveLinkClient : IAsyncDisposable
 
 			foreach (var channel in snapshot.Channels)
 			{
-				_knownChannels[channel.Id] = channel.Name;
+				_knownChannels[channel.Id] = new KnownChannel(
+					channel.Id, channel.Name, [.. channel.Mixes.Select(m => m.MixId)]);
+			}
+		}
+	}
+
+	private void NoteMixes(IReadOnlyList<MixState> mixes, bool fullReplace)
+	{
+		lock (_cacheLock)
+		{
+			if (fullReplace)
+			{
+				_knownMixes.Clear();
+			}
+
+			foreach (var mix in mixes)
+			{
+				_knownMixes[mix.Id] = mix.Name;
 			}
 		}
 	}
@@ -741,6 +779,7 @@ public sealed class WaveLinkClient : IAsyncDisposable
 		}
 
 		NoteChannels(snapshot, fullReplace: true);
+		NoteMixes(snapshot.Mixes, fullReplace: true);
 		RaiseSnapshotChanged();
 	}
 
@@ -1084,6 +1123,7 @@ public sealed class WaveLinkClient : IAsyncDisposable
 
 			bool fullReplace = string.Equals(method, "channelsChanged", StringComparison.Ordinal);
 			NoteChannels(_snapshot, fullReplace);
+			NoteMixes(_snapshot.Mixes, string.Equals(method, "mixesChanged", StringComparison.Ordinal));
 		}
 
 		RaiseSnapshotChanged();

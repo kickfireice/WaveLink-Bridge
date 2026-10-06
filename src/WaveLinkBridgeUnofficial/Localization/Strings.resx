@@ -230,7 +230,7 @@
     <value>Volume of {name}</value>
   </data>
   <data name="Variables.ChannelVolume.Description" xml:space="preserve">
-    <value>Live overall volume of the Wave Link channel behind {name}, in percent. Bind a slider to it for two-way control.</value>
+    <value>Live Wave Link volume behind {name}, in percent. Bind a slider to it for two-way control.</value>
   </data>
   <data name="Variables.ChannelVolume.NotFound" xml:space="preserve">
     <value>Channel {value} is not known.</value>

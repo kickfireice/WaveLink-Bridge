@@ -94,15 +94,19 @@ unavailable, never as a faked empty value.
 
 ### Slider binding (two-way volume)
 
-Each channel also appears in the variable browser as `wavelink_vol_<channel>`
-(number, 0–100, writable): **bind the Slider widget to it** (BINDING → Variable)
-and sliding drives Wave Link directly, while the slider follows outside changes
+Each channel appears in the variable browser twice: once overall
+(`wavelink_vol_game`) and once per mix (`wavelink_vol_game_headphones`,
+`wavelink_vol_game_stream`, ...). **Bind the Slider widget to the per-mix one**
+(BINDING → Variable) and dragging mirrors the exact cell you see in the Wave
+Link UI — slide to 5, Wave Link shows 5; slide to 100, it shows 100. The
+binding writes live while you drag and follows outside changes
 (Wave Link UI, other buttons) within seconds. No action needed on the slider —
 use its tap events for extras (e.g. Double Tap → *Mute channel*).
 
-Channel volumes are overall (master) volumes. Per-mix control stays on the
-actions. Do not feed a slider's absolute value into *Adjust channel volume* —
-that action takes a relative nudge; use *Set channel volume* for absolute values.
+The overall entry drives the channel master. Per-mix control beyond sliders
+stays on the actions. Do not feed a slider's absolute value into *Adjust channel
+volume* — that action takes a relative nudge; use *Set channel volume* for
+absolute values.
 
 ## Privacy and data handling
 

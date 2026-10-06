@@ -112,8 +112,10 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 	public async ValueTask<VariableWriteResult> SetValueAsync(string localId, object? value, CancellationToken cancellationToken = default)
 	{
 		// Only catalog volumes declare Write; the host refuses anything else before it reaches here.
+		// A bare channel id addresses the overall volume; channel|mix addresses one mix.
 		await EnsureChannelsKnownAsync(cancellationToken).ConfigureAwait(false);
-		if (!_client.IsChannelKnown(localId))
+		var (channelId, mixId) = SplitCatalogId(localId);
+		if (!_client.IsChannelKnown(channelId))
 		{
 			return VariableWriteResult.NotFound(Strings.Variables.ChannelVolume.NotFound(localId));
 		}
@@ -125,7 +127,7 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 
 		try
 		{
-			await _client.SetChannelVolumeAsync(localId, WaveLinkClient.OverallMix, percent / 100, cancellationToken).ConfigureAwait(false);
+			await _client.SetChannelVolumeAsync(channelId, mixId ?? WaveLinkClient.OverallMix, percent / 100, cancellationToken).ConfigureAwait(false);
 			return VariableWriteResult.Applied();
 		}
 		catch (WaveLinkNotConnectedException)
@@ -241,12 +243,21 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 		return id.Replace('_', '-').ToLowerInvariant();
 	}
 
-	private VariableReading ChannelVolumeReading(string channelId)
+	private VariableReading ChannelVolumeReading(string catalogId)
 	{
-		double? percent = _client.TryGetChannelVolumePercent(channelId);
+		var (channelId, mixId) = SplitCatalogId(catalogId);
+		double? percent = mixId is null
+			? _client.TryGetChannelVolumePercent(channelId)
+			: _client.TryGetChannelMixVolumePercent(channelId, mixId);
 		return percent.HasValue
 			? VariableReading.Of(percent.Value, 0, 100, 1)
 			: VariableReading.Unavailable;
+	}
+
+	private static (string ChannelId, string? MixId) SplitCatalogId(string localId)
+	{
+		int separator = localId.LastIndexOf('|');
+		return separator < 0 ? (localId, null) : (localId[..separator], localId[(separator + 1)..]);
 	}
 
 	private static bool TryGetPercent(object? value, out double percent)
@@ -271,14 +282,27 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 		}
 	}
 
-	/// <summary>Deterministic variable names over the known channels, so Discover and Resolve agree.</summary>
+	/// <summary>Deterministic variable names over the known channels, so Discover and Resolve agree.
+	/// Each channel contributes its overall volume plus one entry per mix, so a slider can bind the
+	/// exact cell shown in the Wave Link UI.</summary>
 	private Dictionary<string, string> ChannelVariableNames()
 	{
+		var candidates = new List<(string Id, string Base)>();
+		foreach (var channel in _client.KnownChannels().OrderBy(c => c.Id, StringComparer.Ordinal))
+		{
+			string channelPart = SanitizeName(channel.Name);
+			candidates.Add((channel.Id, "wavelink_vol_" + channelPart));
+			foreach (var mixId in channel.MixIds.OrderBy(m => m, StringComparer.Ordinal))
+			{
+				candidates.Add((channel.Id + "|" + mixId,
+					"wavelink_vol_" + channelPart + "_" + SanitizeName(_client.KnownMixName(mixId))));
+			}
+		}
+
 		var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 		var taken = new HashSet<string>(StringComparer.Ordinal);
-		foreach (var channel in _client.KnownChannels().OrderBy(c => c.Key, StringComparer.Ordinal))
+		foreach (var (id, candidate) in candidates)
 		{
-			string candidate = "wavelink_vol_" + SanitizeName(channel.Value);
 			string name = candidate;
 			int suffix = 2;
 			while (!taken.Add(name))
@@ -287,7 +311,7 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 				suffix++;
 			}
 
-			names[channel.Key] = name;
+			names[id] = name;
 		}
 
 		return names;
@@ -347,7 +371,7 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 				.ToList();
 			await sink.PublishAsync(values, CancellationToken.None).ConfigureAwait(false);
 
-			var current = new HashSet<string>(_client.KnownChannels().Select(c => c.Key), StringComparer.OrdinalIgnoreCase);
+			var current = new HashSet<string>(_client.KnownChannels().Select(c => c.Id), StringComparer.OrdinalIgnoreCase);
 			bool membershipChanged;
 			lock (_sync)
 			{

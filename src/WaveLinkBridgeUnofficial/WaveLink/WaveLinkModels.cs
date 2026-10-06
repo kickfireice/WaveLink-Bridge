@@ -62,3 +62,6 @@ public sealed record Snapshot(
 	string? MainOutputId,
 	string? AppVersion,
 	DateTimeOffset TakenAt);
+
+/// <summary>Last-known channel for catalog binding: id, display name, and mix ids.</summary>
+public sealed record KnownChannel(string Id, string Name, IReadOnlyList<string> MixIds);
