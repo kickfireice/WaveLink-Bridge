@@ -34,7 +34,7 @@ internal sealed class SetChannelVolumeAction(WaveLinkClient client, ILogger logg
 		Snapshot snapshot;
 		try
 		{
-			snapshot = await Client.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+			snapshot = await Client.GetProviderSnapshotAsync(cancellationToken).ConfigureAwait(false);
 		}
 		catch (WaveLinkNotConnectedException)
 		{
@@ -118,7 +118,7 @@ internal sealed class AdjustChannelVolumeAction(WaveLinkClient client, ILogger l
 		Snapshot snapshot;
 		try
 		{
-			snapshot = await Client.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+			snapshot = await Client.GetProviderSnapshotAsync(cancellationToken).ConfigureAwait(false);
 		}
 		catch (WaveLinkNotConnectedException)
 		{
@@ -202,7 +202,7 @@ internal sealed class ToggleChannelMuteAction(WaveLinkClient client, ILogger log
 		Snapshot snapshot;
 		try
 		{
-			snapshot = await Client.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+			snapshot = await Client.GetProviderSnapshotAsync(cancellationToken).ConfigureAwait(false);
 		}
 		catch (WaveLinkNotConnectedException)
 		{

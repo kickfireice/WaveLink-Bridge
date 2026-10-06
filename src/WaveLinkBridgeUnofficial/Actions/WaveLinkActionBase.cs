@@ -180,13 +180,24 @@ internal abstract class WaveLinkActionBase(WaveLinkClient client, ILogger logger
 			case decimal m:
 				number = (double)m;
 				return true;
-			case string s when double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsed):
+			case string s when TryParseNumber(s, out double parsed):
 				number = parsed;
 				return true;
 			default:
 				number = 0;
 				return false;
 		}
+	}
+
+	private static bool TryParseNumber(string text, out double number)
+	{
+		string cleaned = text.Trim();
+		if (cleaned.EndsWith('%'))
+		{
+			cleaned = cleaned[..^1].Trim();
+		}
+
+		return double.TryParse(cleaned, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out number);
 	}
 
 	protected static MuteMode ParseMuteMode(object? value) => (value as string) switch

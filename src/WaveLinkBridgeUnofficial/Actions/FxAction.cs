@@ -35,7 +35,7 @@ internal sealed class ToggleChannelFxAction(WaveLinkClient client, ILogger logge
 		Snapshot snapshot;
 		try
 		{
-			snapshot = await Client.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+			snapshot = await Client.GetProviderSnapshotAsync(cancellationToken).ConfigureAwait(false);
 		}
 		catch (WaveLinkNotConnectedException)
 		{

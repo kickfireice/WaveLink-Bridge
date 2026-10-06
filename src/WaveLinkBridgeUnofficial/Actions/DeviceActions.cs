@@ -38,7 +38,7 @@ internal sealed class SetInputGainAction(WaveLinkClient client, ILogger logger)
 		Snapshot snapshot;
 		try
 		{
-			snapshot = await Client.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+			snapshot = await Client.GetProviderSnapshotAsync(cancellationToken).ConfigureAwait(false);
 		}
 		catch (WaveLinkNotConnectedException)
 		{
@@ -136,7 +136,7 @@ internal sealed class SetOutputAction(WaveLinkClient client, ILogger logger)
 		Snapshot snapshot;
 		try
 		{
-			snapshot = await Client.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+			snapshot = await Client.GetProviderSnapshotAsync(cancellationToken).ConfigureAwait(false);
 		}
 		catch (WaveLinkNotConnectedException)
 		{

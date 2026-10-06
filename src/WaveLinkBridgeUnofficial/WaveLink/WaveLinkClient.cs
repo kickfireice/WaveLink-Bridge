@@ -39,7 +39,9 @@ public sealed class WaveLinkClient : IAsyncDisposable
 
 	private static readonly TimeSpan RpcTimeout = TimeSpan.FromSeconds(10);
 	private static readonly TimeSpan FreshnessLimit = TimeSpan.FromSeconds(5);
-	private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(30);
+	private static readonly TimeSpan KeepaliveInterval = TimeSpan.FromSeconds(15);
+	private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(60);
+	private static readonly TimeSpan ReceiveIdleLimit = TimeSpan.FromSeconds(60);
 
 	private readonly ILogger _logger;
 	private readonly SemaphoreSlim _sendGate = new(1, 1);
@@ -434,6 +436,23 @@ public sealed class WaveLinkClient : IAsyncDisposable
 		await BestEffortRefreshAsync(cancellationToken).ConfigureAwait(false);
 	}
 
+	/// <summary>Provider fast path: serve the cache, even stale, so dropdowns survive reconnect
+	/// flaps without hitting the host's options deadline. Only a cold start with no cache at
+	/// all waits for a connection.</summary>
+	public async Task<Snapshot> GetProviderSnapshotAsync(CancellationToken cancellationToken)
+	{
+		lock (_cacheLock)
+		{
+			if (_snapshot is not null)
+			{
+				return _snapshot;
+			}
+		}
+
+		await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
+		return await GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+	}
+
 	public string GetStatusText()
 	{
 		// Diagnostics, not UI: English literals, like log text. The action chrome around this
@@ -460,7 +479,7 @@ public sealed class WaveLinkClient : IAsyncDisposable
 			recent = _recentEvents.ToArray();
 		}
 
-		builder.AppendLine(CultureInfo.InvariantCulture, $"WaveLink Bridge status (build {typeof(WaveLinkClient).Assembly.GetName().Version})");
+		builder.AppendLine("WaveLink Bridge " + PluginBuildIdentity() + " status");
 		string connectionLine = connected
 			? "Connected (Wave Link " + (version ?? "?") + ")"
 			: "Not connected (" + (lastError ?? "not started") + ")";
@@ -492,6 +511,30 @@ public sealed class WaveLinkClient : IAsyncDisposable
 		}
 
 		return builder.ToString().TrimEnd();
+	}
+
+	private static string PluginBuildIdentity()
+	{
+		try
+		{
+			string path = Path.Combine(AppContext.BaseDirectory, "manifest.json");
+			using var document = JsonDocument.Parse(File.ReadAllText(path));
+			if (document.RootElement.TryGetProperty("version", out var version) && version.GetString() is { } text)
+			{
+				return text;
+			}
+		}
+		catch (IOException)
+		{
+		}
+		catch (JsonException)
+		{
+		}
+		catch (UnauthorizedAccessException)
+		{
+		}
+
+		return typeof(WaveLinkClient).Assembly.GetName().Version?.ToString() ?? "?";
 	}
 
 	private static bool IsOverall(string mixRef) =>
@@ -768,7 +811,26 @@ public sealed class WaveLinkClient : IAsyncDisposable
 
 			await RefreshAsync(cancellationToken).ConfigureAwait(false);
 			NoteConnect();
-			await pump.ConfigureAwait(false);
+
+			// Freshness traffic runs on its own task: the reader must never await an RPC, because
+			// the reader is the only thing that can dispatch the RPC's response.
+			using var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+			var heartbeat = HeartbeatLoopAsync(heartbeatCts.Token);
+			try
+			{
+				await pump.ConfigureAwait(false);
+			}
+			finally
+			{
+				await heartbeatCts.CancelAsync().ConfigureAwait(false);
+				try
+				{
+					await heartbeat.ConfigureAwait(false);
+				}
+				catch (OperationCanceledException)
+				{
+				}
+			}
 		}
 		finally
 		{
@@ -785,15 +847,52 @@ public sealed class WaveLinkClient : IAsyncDisposable
 		}
 	}
 
+	private async Task HeartbeatLoopAsync(CancellationToken cancellationToken)
+	{
+		var nextRefresh = DateTimeOffset.UtcNow + RefreshInterval;
+		while (!cancellationToken.IsCancellationRequested)
+		{
+			try
+			{
+				await Task.Delay(KeepaliveInterval, cancellationToken).ConfigureAwait(false);
+			}
+			catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+			{
+				break;
+			}
+
+			try
+			{
+				if (DateTimeOffset.UtcNow >= nextRefresh)
+				{
+					await RefreshAsync(cancellationToken).ConfigureAwait(false);
+					nextRefresh = DateTimeOffset.UtcNow + RefreshInterval;
+				}
+				else
+				{
+					await RpcAsync("getApplicationInfo", null, cancellationToken).ConfigureAwait(false);
+				}
+			}
+			catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+			{
+				break;
+			}
+			catch (Exception ex)
+			{
+				_logger.Debug(ex, "Wave Link heartbeat failed; the connection will be re-established if it dropped.");
+				break;
+			}
+		}
+	}
+
 	private async Task ReceiveLoopAsync(ClientWebSocket socket, CancellationToken cancellationToken)
 	{
 		var buffer = new byte[65536];
 		var message = new List<byte>();
-		var pollAt = DateTimeOffset.UtcNow + PollInterval;
 
 		while (!cancellationToken.IsCancellationRequested && socket.State == WebSocketState.Open)
 		{
-			using var receiveTimeout = new CancellationTokenSource(PollInterval);
+			using var receiveTimeout = new CancellationTokenSource(ReceiveIdleLimit);
 			using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, receiveTimeout.Token);
 			WebSocketReceiveResult frame;
 			try
@@ -802,8 +901,7 @@ public sealed class WaveLinkClient : IAsyncDisposable
 			}
 			catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
 			{
-				await BestEffortRefreshAsync(cancellationToken).ConfigureAwait(false);
-				pollAt = DateTimeOffset.UtcNow + PollInterval;
+				_logger.Debug("No Wave Link frames for {Idle}s; still listening.", ReceiveIdleLimit.TotalSeconds);
 				continue;
 			}
 
@@ -821,12 +919,6 @@ public sealed class WaveLinkClient : IAsyncDisposable
 			var text = Encoding.UTF8.GetString(message.ToArray());
 			message.Clear();
 			HandleMessage(text);
-
-			if (DateTimeOffset.UtcNow >= pollAt)
-			{
-				await BestEffortRefreshAsync(cancellationToken).ConfigureAwait(false);
-				pollAt = DateTimeOffset.UtcNow + PollInterval;
-			}
 		}
 	}
 

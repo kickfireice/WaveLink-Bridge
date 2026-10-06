@@ -33,7 +33,7 @@ internal sealed class SetMixVolumeAction(WaveLinkClient client, ILogger logger)
 		Snapshot snapshot;
 		try
 		{
-			snapshot = await Client.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+			snapshot = await Client.GetProviderSnapshotAsync(cancellationToken).ConfigureAwait(false);
 		}
 		catch (WaveLinkNotConnectedException)
 		{
@@ -111,7 +111,7 @@ internal sealed class ToggleMixMuteAction(WaveLinkClient client, ILogger logger)
 		Snapshot snapshot;
 		try
 		{
-			snapshot = await Client.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+			snapshot = await Client.GetProviderSnapshotAsync(cancellationToken).ConfigureAwait(false);
 		}
 		catch (WaveLinkNotConnectedException)
 		{
