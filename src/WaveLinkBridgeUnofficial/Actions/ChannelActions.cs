@@ -220,9 +220,7 @@ internal sealed class ToggleChannelMuteAction(WaveLinkClient client, ILogger log
 				return Task.FromResult<ActionStateSnapshot?>(null);
 			}
 
-			return Task.FromResult<ActionStateSnapshot?>(new ActionStateSnapshot(
-				MuteStates(Strings.Actions.ToggleChannelMute.State.Muted(), Strings.Actions.ToggleChannelMute.State.Unmuted()),
-				active));
+		return Task.FromResult<ActionStateSnapshot?>(new ActionStateSnapshot(MuteStates(), active));
 		}
 		catch
 		{
@@ -274,9 +272,8 @@ internal sealed class ToggleChannelMuteAction(WaveLinkClient client, ILogger log
 			try
 			{
 				var mode = ParseMuteMode(context.Parameters.GetValueOrDefault(MuteModeParameter));
-				string? before = Client.GetMuteStateId(channel, mix);
 				await Client.SetChannelMuteAsync(channel, mix, mode, context.CancellationToken).ConfigureAwait(false);
-				return ActionResult.Success(ExpectedMuteStateId(mode, before));
+				return ActionResult.Success();
 			}
 			catch (Exception ex)
 			{

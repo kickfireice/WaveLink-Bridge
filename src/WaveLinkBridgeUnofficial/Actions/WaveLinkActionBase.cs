@@ -142,26 +142,13 @@ internal abstract class WaveLinkActionBase(WaveLinkClient client, ILogger logger
 		new() { Value = "disable", Label = Strings.Fields.FxMode.Disable() },
 	];
 
-	protected static IReadOnlyList<ActionStateDefinition> MuteStates(LocalizedText mutedLabel, LocalizedText unmutedLabel) =>
+	/// <summary>Labels come from <see cref="MacroDeckStrings.States"/> (never own copies) and carry no
+	/// appearance: first-run styling beyond the label has broken widget saves before.</summary>
+	protected static IReadOnlyList<ActionStateDefinition> MuteStates() =>
 	[
-		new ActionStateDefinition(WaveLinkClient.MutedStateId, mutedLabel)
-		{
-			DefaultAppearance = new ActionStateAppearance { BackgroundColor = "#991b1b", LabelColor = "#ffffff" },
-		},
-		new ActionStateDefinition(WaveLinkClient.UnmutedStateId, unmutedLabel)
-		{
-			DefaultAppearance = new ActionStateAppearance { BackgroundColor = "#166534", LabelColor = "#ffffff" },
-		},
+		new ActionStateDefinition(WaveLinkClient.MutedStateId, MacroDeckStrings.States.Muted()),
+		new ActionStateDefinition(WaveLinkClient.UnmutedStateId, MacroDeckStrings.States.Unmuted()),
 	];
-
-	protected static string ExpectedMuteStateId(MuteMode mode, string? before) => mode switch
-	{
-		MuteMode.Mute => WaveLinkClient.MutedStateId,
-		MuteMode.Unmute => WaveLinkClient.UnmutedStateId,
-		_ => string.Equals(before, WaveLinkClient.MutedStateId, StringComparison.Ordinal)
-			? WaveLinkClient.UnmutedStateId
-			: WaveLinkClient.MutedStateId,
-	};
 
 	protected static ChannelState? SelectedChannel(IReadOnlyDictionary<string, object?> parameters, Snapshot snapshot)
 	{

@@ -139,10 +139,9 @@ absolute values.
 ## Multi-state mute buttons
 
 *Mute channel* and *Mute mix* drive button state: set the button to multi-state
-and it follows muted (red) vs unmuted (green) live, including changes made in
-the Wave Link UI or by other buttons. First-time buttons adopt those colors;
-re-styling a state is yours forever — the plugin never overwrites it. State
-refreshes on the host's widget cadence (a few seconds), same as variables.
+and it follows muted vs unmuted live, including changes made in
+the Wave Link UI or by other buttons. Style each state yourself (label, colours,
+icon). State refreshes on the host's widget cadence (a few seconds), same as variables.
 
 ## Repository layout
 
