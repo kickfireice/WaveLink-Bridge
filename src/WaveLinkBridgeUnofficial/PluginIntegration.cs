@@ -112,6 +112,7 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 	public async ValueTask<VariableWriteResult> SetValueAsync(string localId, object? value, CancellationToken cancellationToken = default)
 	{
 		// Only catalog volumes declare Write; the host refuses anything else before it reaches here.
+		await EnsureChannelsKnownAsync(cancellationToken).ConfigureAwait(false);
 		if (!_client.IsChannelKnown(localId))
 		{
 			return VariableWriteResult.NotFound(Strings.Variables.ChannelVolume.NotFound(localId));
@@ -142,13 +143,14 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 		}
 	}
 
-	public ValueTask<VariableCatalogPage> DiscoverAsync(VariableCatalogQuery query, CancellationToken cancellationToken = default)
+	public async ValueTask<VariableCatalogPage> DiscoverAsync(VariableCatalogQuery query, CancellationToken cancellationToken = default)
 	{
 		if (query.ParentId is not null)
 		{
-			return ValueTask.FromResult(VariableCatalogPage.Empty);
+			return VariableCatalogPage.Empty;
 		}
 
+		await EnsureChannelsKnownAsync(cancellationToken).ConfigureAwait(false);
 		var names = ChannelVariableNames();
 		var items = names
 			.Where(entry => MatchesSearch(entry.Value, query.Search))
@@ -167,16 +169,35 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 		string? continuation = offset + page.Count < items.Count
 			? (offset + page.Count).ToString(CultureInfo.InvariantCulture)
 			: null;
-		return ValueTask.FromResult(new VariableCatalogPage { Items = page, ContinuationToken = continuation });
+		return new VariableCatalogPage { Items = page, ContinuationToken = continuation };
 	}
 
 	/// <summary>Null only for an id that never named a channel. A channel that is merely gone right
 	/// now still resolves, so the binding reads unavailable and resumes on its own.</summary>
-	public ValueTask<VariableDefinition?> ResolveAsync(string localId, CancellationToken cancellationToken = default)
+	public async ValueTask<VariableDefinition?> ResolveAsync(string localId, CancellationToken cancellationToken = default)
 	{
+		await EnsureChannelsKnownAsync(cancellationToken).ConfigureAwait(false);
 		var names = ChannelVariableNames();
-		return ValueTask.FromResult<VariableDefinition?>(
-			names.TryGetValue(localId, out string? name) ? ChannelVolumeDefinition(localId, name) : null);
+		return names.TryGetValue(localId, out string? name) ? ChannelVolumeDefinition(localId, name) : null;
+	}
+
+	/// <summary>Cold-start guard: the channel map fills on the first refresh, which races catalog
+	/// browsing. One live fetch when we know nothing yet; a genuinely unknown id still answers fast.</summary>
+	private async Task EnsureChannelsKnownAsync(CancellationToken cancellationToken)
+	{
+		if (_client.KnownChannels().Count > 0)
+		{
+			return;
+		}
+
+		try
+		{
+			await _client.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+		}
+		catch (Exception ex) when (ex is not OperationCanceledException)
+		{
+			_logger.Debug(ex, "Channel discovery ran before Wave Link was reachable; answering from nothing known.");
+		}
 	}
 
 	/// <summary>Called with the complete set of bound ids every time it changes. Remembers the set for
