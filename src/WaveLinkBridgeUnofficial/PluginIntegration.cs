@@ -20,7 +20,6 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 	private readonly ILogger _logger;
 	private readonly object _sync = new();
 	private IVariableSink? _sink;
-	private HashSet<string> _subscribed = new(StringComparer.Ordinal);
 	private HashSet<string> _pushedChannelSet = new(StringComparer.OrdinalIgnoreCase);
 
 	public PluginIntegration(ILogger logger)
@@ -204,15 +203,11 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 		}
 	}
 
-	/// <summary>Called with the complete set of bound ids every time it changes. Remembers the set for
-	/// push and answers with the values already at hand.</summary>
+	/// <summary>Called with the complete set of bound ids every time it changes. Answers with the
+	/// values already at hand. Pushes go to every known id regardless (ids nobody bound are
+	/// dropped by the host), so a missing or late subscribe can never silence live updates.</summary>
 	public ValueTask<IReadOnlyList<VariableValue>> SubscribeAsync(IReadOnlyCollection<string> localIds, CancellationToken cancellationToken = default)
 	{
-		lock (_sync)
-		{
-			_subscribed = new HashSet<string>(localIds, StringComparer.Ordinal);
-		}
-
 		var values = localIds
 			.Select(id => new VariableValue { Id = id, Reading = ChannelVolumeReading(id) })
 			.ToList();
@@ -380,18 +375,20 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 		try
 		{
 			IVariableSink? sink;
-			string[] ids;
 			lock (_sync)
 			{
 				sink = _sink;
-				ids = [.. _subscribed];
 			}
 
-			if (sink is null || ids.Length == 0)
+			if (sink is null)
 			{
 				return;
 			}
 
+			// Every known catalog id, not just the subscribed set: values for ids nobody bound
+			// are dropped by the host, while gating on a subscribe call that may never come (or
+			// come in another id form) means no push ever fires and sliders only follow on poll.
+			string[] ids = ChannelVariableNames().Keys.ToArray();
 			await PushChannelValuesAsync(sink, ids).ConfigureAwait(false);
 		}
 		finally
