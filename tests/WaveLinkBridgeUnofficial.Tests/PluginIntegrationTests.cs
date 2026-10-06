@@ -15,6 +15,7 @@ namespace WaveLinkBridgeUnofficial.Tests;
 [TestFixture]
 public sealed class PluginIntegrationTests
 {
+	private static readonly string[] _trioStates = ["muted", "unmuted", "unavailable"];
 	private static readonly string[] _actionsNeedingParameters =
 	[
 		"set-channel-volume",
@@ -141,7 +142,7 @@ public sealed class PluginIntegrationTests
 			return;
 		}
 
-		Assert.That(state.States.Select(s => s.Id), Is.EquivalentTo(new[] { "muted", "unmuted", "unavailable" }));
+		Assert.That(state.States.Select(s => s.Id), Is.EquivalentTo(_trioStates));
 		Assert.That(state.ActiveStateId, Is.EqualTo("muted").Or.EqualTo("unmuted").Or.EqualTo("unavailable"));
 	}
 

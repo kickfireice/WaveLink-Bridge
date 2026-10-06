@@ -306,15 +306,17 @@ public sealed class WaveLinkClient : IAsyncDisposable
 		}
 	}
 
-	/// <summary>Waits boundedly for a live connection, then throws rather than training double-clicks.</summary>
-	public async Task EnsureConnectedAsync(CancellationToken cancellationToken)
+	/// <summary>Waits boundedly for a live connection, then throws rather than training double-clicks.
+	/// Browse paths (dropdowns, catalog) pass a short grace so they answer inside the host's
+	/// probe deadlines; button presses use the full grace to ride out reconnect flaps.</summary>
+	public async Task EnsureConnectedAsync(CancellationToken cancellationToken, TimeSpan? reconnectGrace = null)
 	{
 		if (IsConnected)
 		{
 			return;
 		}
 
-		var deadline = DateTimeOffset.UtcNow + ReconnectGrace;
+		var deadline = DateTimeOffset.UtcNow + (reconnectGrace ?? ReconnectGrace);
 		while (DateTimeOffset.UtcNow < deadline)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
@@ -328,9 +330,9 @@ public sealed class WaveLinkClient : IAsyncDisposable
 		throw new WaveLinkNotConnectedException(LastErrorOrDefault());
 	}
 
-	public async Task<Snapshot> GetSnapshotAsync(CancellationToken cancellationToken)
+	public async Task<Snapshot> GetSnapshotAsync(CancellationToken cancellationToken, TimeSpan? reconnectGrace = null)
 	{
-		await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
+		await EnsureConnectedAsync(cancellationToken, reconnectGrace).ConfigureAwait(false);
 
 		bool stale;
 		lock (_cacheLock)
@@ -560,7 +562,7 @@ public sealed class WaveLinkClient : IAsyncDisposable
 
 	/// <summary>Provider fast path: serve the cache, even stale, so dropdowns survive reconnect
 	/// flaps without hitting the host's options deadline. Only a cold start with no cache at
-	/// all waits for a connection.</summary>
+	/// all waits, briefly, for a connection.</summary>
 	public async Task<Snapshot> GetProviderSnapshotAsync(CancellationToken cancellationToken)
 	{
 		lock (_cacheLock)
@@ -571,8 +573,8 @@ public sealed class WaveLinkClient : IAsyncDisposable
 			}
 		}
 
-		await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
-		return await GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+		await EnsureConnectedAsync(cancellationToken, TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+		return await GetSnapshotAsync(cancellationToken, TimeSpan.FromSeconds(2)).ConfigureAwait(false);
 	}
 
 	public string GetStatusText()

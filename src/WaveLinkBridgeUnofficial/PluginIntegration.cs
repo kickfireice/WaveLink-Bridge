@@ -184,7 +184,8 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 	}
 
 	/// <summary>Cold-start guard: the channel map fills on the first refresh, which races catalog
-	/// browsing. One live fetch when we know nothing yet; a genuinely unknown id still answers fast.</summary>
+	/// browsing. One live fetch when we know nothing yet, on a short grace so probes and browsers
+	/// get an answer instead of a timeout; a genuinely unknown id still answers fast.</summary>
 	private async Task EnsureChannelsKnownAsync(CancellationToken cancellationToken)
 	{
 		if (_client.KnownChannels().Count > 0)
@@ -194,7 +195,7 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 
 		try
 		{
-			await _client.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+			await _client.GetSnapshotAsync(cancellationToken, TimeSpan.FromSeconds(2)).ConfigureAwait(false);
 		}
 		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
