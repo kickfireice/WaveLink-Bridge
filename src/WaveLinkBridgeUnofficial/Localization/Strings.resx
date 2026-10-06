@@ -226,11 +226,8 @@
   <data name="Variables.ReadOnly" xml:space="preserve">
     <value>This variable is read-only.</value>
   </data>
-  <data name="Variables.ChannelVolume.DisplayName" xml:space="preserve">
-    <value>Volume of {name}</value>
-  </data>
-  <data name="Variables.ChannelVolume.Description" xml:space="preserve">
-    <value>Live Wave Link volume behind {name}, in percent. Bind a slider to it for two-way control.</value>
+  <data name="Variables.ChannelVolume.Blurb" xml:space="preserve">
+    <value>Live Wave Link volume in percent. Bind a slider to it for two-way control.</value>
   </data>
   <data name="Variables.ChannelVolume.NotFound" xml:space="preserve">
     <value>Channel {value} is not known.</value>

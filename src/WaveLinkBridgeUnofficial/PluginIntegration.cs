@@ -155,7 +155,7 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 		await EnsureChannelsKnownAsync(cancellationToken).ConfigureAwait(false);
 		var names = ChannelVariableNames();
 		var items = names
-			.Where(entry => MatchesSearch(entry.Value, query.Search))
+			.Where(entry => MatchesSearch(entry.Value.VariableName, query.Search) || MatchesSearch(entry.Value.Display, query.Search))
 			.Select(entry => ChannelVolumeDefinition(entry.Key, entry.Value))
 			.ToList();
 
@@ -180,7 +180,7 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 	{
 		await EnsureChannelsKnownAsync(cancellationToken).ConfigureAwait(false);
 		var names = ChannelVariableNames();
-		return names.TryGetValue(localId, out string? name) ? ChannelVolumeDefinition(localId, name) : null;
+		return names.TryGetValue(localId, out CatalogEntry? entry) ? ChannelVolumeDefinition(localId, entry) : null;
 	}
 
 	/// <summary>Cold-start guard: the channel map fills on the first refresh, which races catalog
@@ -284,24 +284,26 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 
 	/// <summary>Deterministic variable names over the known channels, so Discover and Resolve agree.
 	/// Each channel contributes its overall volume plus one entry per mix, so a slider can bind the
-	/// exact cell shown in the Wave Link UI.</summary>
-	private Dictionary<string, string> ChannelVariableNames()
+	/// exact cell shown in the Wave Link UI. Display names use channel and mix names, never ids.</summary>
+	private Dictionary<string, CatalogEntry> ChannelVariableNames()
 	{
-		var candidates = new List<(string Id, string Base)>();
+		var candidates = new List<(string Id, string Base, string Display)>();
 		foreach (var channel in _client.KnownChannels().OrderBy(c => c.Id, StringComparer.Ordinal))
 		{
 			string channelPart = SanitizeName(channel.Name);
-			candidates.Add((channel.Id, "wavelink_vol_" + channelPart));
+			candidates.Add((channel.Id, "wavelink_vol_" + channelPart, channel.Name + " volume"));
 			foreach (var mixId in channel.MixIds.OrderBy(m => m, StringComparer.Ordinal))
 			{
+				string mixName = _client.KnownMixName(mixId);
 				candidates.Add((channel.Id + "|" + mixId,
-					"wavelink_vol_" + channelPart + "_" + SanitizeName(_client.KnownMixName(mixId))));
+					"wavelink_vol_" + channelPart + "_" + SanitizeName(mixName),
+					channel.Name + " volume on " + mixName));
 			}
 		}
 
-		var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		var names = new Dictionary<string, CatalogEntry>(StringComparer.OrdinalIgnoreCase);
 		var taken = new HashSet<string>(StringComparer.Ordinal);
-		foreach (var (id, candidate) in candidates)
+		foreach (var (id, candidate, display) in candidates)
 		{
 			string name = candidate;
 			int suffix = 2;
@@ -311,11 +313,13 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 				suffix++;
 			}
 
-			names[id] = name;
+			names[id] = new CatalogEntry(name, display);
 		}
 
 		return names;
 	}
+
+	private sealed record CatalogEntry(string VariableName, string Display);
 
 	private static string SanitizeName(string channelName)
 	{
@@ -333,12 +337,12 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 		string.IsNullOrWhiteSpace(search) ||
 		variableName.Contains(search, StringComparison.OrdinalIgnoreCase);
 
-	private static VariableDefinition ChannelVolumeDefinition(string channelId, string variableName) =>
+	private static VariableDefinition ChannelVolumeDefinition(string channelId, CatalogEntry entry) =>
 		VariableDefinition.OnDemand(channelId, VariableType.Numeric) with
 		{
-			Name = variableName,
-			DisplayName = Strings.Variables.ChannelVolume.DisplayName(variableName),
-			Description = Strings.Variables.ChannelVolume.Description(variableName),
+			Name = entry.VariableName,
+			DisplayName = entry.Display,
+			Description = Strings.Variables.ChannelVolume.Blurb(),
 			Unit = "%",
 			SemanticKind = VariableSemanticKinds.Percentage,
 			Write = new VariableWriteCapability(),
