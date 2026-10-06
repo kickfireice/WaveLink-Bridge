@@ -183,15 +183,16 @@ the platform minimum (`3.0.0-beta.15`).
 
 **MIT** (see `LICENSE`).
 
+All graphics in this repository (`src/WaveLinkBridgeUnofficial/Assets/icon.png`
+and `AuthorIco.png`) were created by the author with AI image generation.
+
 ## AI disclosure
 
-This project was developed with AI assistance (code written with AI agents). It
-ships **no AI-generated assets yet** — the current icon is the template
-placeholder and will be replaced with an AI-generated one before submission, at
-which point the manifest and the Creator Portal declaration will say so. The
-plugin contains **no AI functionality at runtime**, uses no AI service, and makes
-no network connections other than loopback. Declared here and in the Creator
-Portal submission, per store guidelines section 9.
+This project was developed with AI assistance (code written with AI agents), and
+the plugin icon is AI-generated. The plugin contains **no AI functionality at
+runtime**, sends nothing to any AI service, and makes no network connections
+other than loopback. Declared in the manifest and in the Creator Portal
+submission, per store guidelines section 9.
 
 ## Issues and contributions
 

@@ -35,7 +35,7 @@
          that same root, so both have to land next to the built executable. -->
     <ItemGroup>
         <Content Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
-        <Content Include="Assets\icon.svg" CopyToOutputDirectory="PreserveNewest" />
+        <Content Include="Assets\icon.png" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
 </Project>
