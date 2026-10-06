@@ -21,6 +21,37 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 	private readonly object _sync = new();
 	private IVariableSink? _sink;
 	private HashSet<string> _pushedChannelSet = new(StringComparer.OrdinalIgnoreCase);
+	private long _pushBatches;
+	private long _pushValues;
+	private DateTimeOffset? _lastPushAt;
+
+	private string GetPushDiagnostics()
+	{
+		long batches, values;
+		DateTimeOffset? at;
+		lock (_sync)
+		{
+			batches = _pushBatches;
+			values = _pushValues;
+			at = _lastPushAt;
+		}
+
+		string line = "Pushes: " + batches.ToString(CultureInfo.InvariantCulture)
+			+ " (" + values.ToString(CultureInfo.InvariantCulture) + " values)";
+		if (at.HasValue)
+		{
+			var age = DateTimeOffset.UtcNow - at.Value;
+			line += ", last " + (age.TotalSeconds < 60
+				? ((int)age.TotalSeconds).ToString(CultureInfo.InvariantCulture) + "s ago"
+				: ((int)age.TotalMinutes).ToString(CultureInfo.InvariantCulture) + "m ago");
+		}
+		else
+		{
+			line += ", none yet";
+		}
+
+		return line;
+	}
 
 	public PluginIntegration(ILogger logger)
 	{
@@ -37,7 +68,7 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 			new ToggleChannelFxAction(_client, logger),
 			new SetInputGainAction(_client, logger),
 			new SetOutputAction(_client, logger),
-			new ShowStatusAction(_client, logger),
+			new ShowStatusAction(_client, logger, GetPushDiagnostics),
 		];
 	}
 
@@ -411,6 +442,13 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 				.Select(id => new VariableValue { Id = id, Reading = ChannelVolumeReading(id) })
 				.ToList();
 			await sink.PublishAsync(values, CancellationToken.None).ConfigureAwait(false);
+
+			lock (_sync)
+			{
+				_pushBatches++;
+				_pushValues += values.Count;
+				_lastPushAt = DateTimeOffset.UtcNow;
+			}
 
 			var current = new HashSet<string>(_client.KnownChannels().Select(c => c.Id), StringComparer.OrdinalIgnoreCase);
 			bool membershipChanged;

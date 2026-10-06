@@ -199,7 +199,7 @@ internal sealed class SetOutputAction(WaveLinkClient client, ILogger logger)
 	}
 }
 
-internal sealed class ShowStatusAction(WaveLinkClient client, ILogger logger)
+internal sealed class ShowStatusAction(WaveLinkClient client, ILogger logger, Func<string> extraDiagnostics)
 	: WaveLinkActionBase(client, logger), IActionDefinition
 {
 	public string Id => "show-status";
@@ -212,13 +212,13 @@ internal sealed class ShowStatusAction(WaveLinkClient client, ILogger logger)
 
 	public MacroDeckPlatform Platforms => MacroDeckPlatform.All;
 
-	public IActionExecutor CreateExecutor() => new Executor(Client, Logger);
+	public IActionExecutor CreateExecutor() => new Executor(Client, Logger, extraDiagnostics);
 
-	private sealed class Executor(WaveLinkClient client, ILogger logger) : WaveLinkActionBase(client, logger), IActionExecutor
+	private sealed class Executor(WaveLinkClient client, ILogger logger, Func<string> extraDiagnostics) : WaveLinkActionBase(client, logger), IActionExecutor
 	{
 		public Task<ActionResult> ExecuteAsync(ActionExecutionContext context)
 		{
-			string status = Client.GetStatusText();
+			string status = Client.GetStatusText() + Environment.NewLine + extraDiagnostics();
 			Logger.Information("{Status}", status);
 			return Task.FromResult(ActionResult.Accepted(status));
 		}

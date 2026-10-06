@@ -39,8 +39,7 @@ public sealed class WaveLinkClient : IAsyncDisposable
 
 	private static readonly TimeSpan RpcTimeout = TimeSpan.FromSeconds(10);
 	private static readonly TimeSpan FreshnessLimit = TimeSpan.FromSeconds(5);
-	private static readonly TimeSpan KeepaliveInterval = TimeSpan.FromSeconds(15);
-	private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(60);
+	private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
 	private static readonly TimeSpan ReceiveIdleLimit = TimeSpan.FromSeconds(60);
 
 	private readonly ILogger _logger;
@@ -1038,29 +1037,28 @@ public sealed class WaveLinkClient : IAsyncDisposable
 
 	private async Task HeartbeatLoopAsync(CancellationToken cancellationToken)
 	{
-		var nextRefresh = DateTimeOffset.UtcNow + RefreshInterval;
+		// Self-read loop, not just a keepalive: re-reading every couple of seconds is what keeps
+		// bound sliders truthful when Wave Link throttles or drops rapid change notifications.
+		// Best-effort and non-overlapping; the traffic also keeps idle connections open.
 		while (!cancellationToken.IsCancellationRequested)
 		{
 			try
 			{
-				await Task.Delay(KeepaliveInterval, cancellationToken).ConfigureAwait(false);
+				await Task.Delay(PollInterval, cancellationToken).ConfigureAwait(false);
 			}
 			catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
 			{
 				break;
 			}
 
+			if (Interlocked.CompareExchange(ref _refreshRunning, 1, 0) != 0)
+			{
+				continue;
+			}
+
 			try
 			{
-				if (DateTimeOffset.UtcNow >= nextRefresh)
-				{
-					await RefreshAsync(cancellationToken).ConfigureAwait(false);
-					nextRefresh = DateTimeOffset.UtcNow + RefreshInterval;
-				}
-				else
-				{
-					await RpcAsync("getApplicationInfo", null, cancellationToken).ConfigureAwait(false);
-				}
+				await RefreshAsync(cancellationToken).ConfigureAwait(false);
 			}
 			catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
 			{
@@ -1068,11 +1066,16 @@ public sealed class WaveLinkClient : IAsyncDisposable
 			}
 			catch (Exception ex)
 			{
-				_logger.Debug(ex, "Wave Link heartbeat failed; the connection will be re-established if it dropped.");
-				break;
+				_logger.Debug(ex, "Wave Link poll refresh failed; retrying on the next tick.");
+			}
+			finally
+			{
+				Interlocked.Exchange(ref _refreshRunning, 0);
 			}
 		}
 	}
+
+	private int _refreshRunning;
 
 	private async Task ReceiveLoopAsync(ClientWebSocket socket, CancellationToken cancellationToken)
 	{
@@ -1200,35 +1203,6 @@ public sealed class WaveLinkClient : IAsyncDisposable
 		}
 
 		RaiseSnapshotChanged();
-
-		// Wave Link throttles rapid change notifications, so a fast drag can end without a final
-		// event for the value it landed on. Re-read once the burst settles so the cache (and every
-		// push after it) converges on the truth instead of the last event that happened to arrive.
-		ScheduleVerifyRefresh();
-	}
-
-	private int _verifyGeneration;
-
-	private void ScheduleVerifyRefresh()
-	{
-		int generation = Interlocked.Increment(ref _verifyGeneration);
-		_ = Task.Run(async () =>
-		{
-			try
-			{
-				await Task.Delay(1000).ConfigureAwait(false);
-				if (generation != Volatile.Read(ref _verifyGeneration))
-				{
-					return;
-				}
-
-				await RefreshAsync(CancellationToken.None).ConfigureAwait(false);
-			}
-			catch (Exception ex)
-			{
-				_logger.Debug(ex, "Wave Link verify refresh failed; the next poll will correct it.");
-			}
-		});
 	}
 
 	private static Snapshot ApplyOutputDevices(Snapshot snapshot, JsonElement @params)
