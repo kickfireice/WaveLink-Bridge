@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "id": "com.kickfireice.wavelink-bridge",
   "name": "WaveLink Bridge",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Unofficial Elgato Wave Link 3 control for Macro Deck 3. Set volumes, mutes, mixes, inputs, outputs and effects.",
   "icon": "Assets/icon.svg",
   "entrypoints": {

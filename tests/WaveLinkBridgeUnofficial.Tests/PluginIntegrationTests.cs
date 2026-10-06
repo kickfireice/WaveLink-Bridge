@@ -78,6 +78,38 @@ public sealed class PluginIntegrationTests
 	}
 
 	[Test]
+	public async Task Mute_state_is_null_without_configuration()
+	{
+		await using var harness = CreateHarness();
+		await harness.InitializeIntegrationsAsync();
+
+		var channelMute = (await harness.Actions.GetActionStateAsync(
+			"toggle-channel-mute", new Dictionary<string, object?>())).DataAs<ActionStateResult>();
+		var mixMute = (await harness.Actions.GetActionStateAsync(
+			"toggle-mix-mute", new Dictionary<string, object?>())).DataAs<ActionStateResult>();
+
+		Assert.That(channelMute!.HasValue, Is.False);
+		Assert.That(mixMute!.HasValue, Is.False);
+	}
+
+	[Test]
+	public async Task Mute_state_is_null_for_targets_wave_link_does_not_have()
+	{
+		await using var harness = CreateHarness();
+		await harness.InitializeIntegrationsAsync();
+
+		var channelMute = (await harness.Actions.GetActionStateAsync(
+			"toggle-channel-mute",
+			new Dictionary<string, object?> { ["channel"] = "definitely-not-a-channel", ["mix"] = "overall" })).DataAs<ActionStateResult>();
+		var mixMute = (await harness.Actions.GetActionStateAsync(
+			"toggle-mix-mute",
+			new Dictionary<string, object?> { ["mix"] = "definitely-not-a-mix" })).DataAs<ActionStateResult>();
+
+		Assert.That(channelMute!.HasValue, Is.False);
+		Assert.That(mixMute!.HasValue, Is.False);
+	}
+
+	[Test]
 	public async Task ReadAsync_answers_every_id_form_the_same_way()
 	{
 		// Straight at the provider, not through host resolution: whatever Wave Link is doing
@@ -141,7 +173,7 @@ public sealed class PluginIntegrationTests
 		}
 
 		var written = await integration.SetValueAsync(
-			page.Items[0].Id, "loud", TestContext.CurrentContext.CancellationToken);
+			page.Items[0]!.Id!, "loud", TestContext.CurrentContext.CancellationToken);
 
 		Assert.That(written.Status.ToString(), Is.EqualTo("InvalidValue"));
 	}

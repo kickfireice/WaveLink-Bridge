@@ -88,7 +88,6 @@ internal sealed class SetChannelVolumeAction(WaveLinkClient client, ILogger logg
 		}
 	}
 }
-
 internal sealed class AdjustChannelVolumeAction(WaveLinkClient client, ILogger logger)
 	: WaveLinkActionBase(client, logger), IActionDefinition, IDynamicOptionsActionDefinition
 {
@@ -174,7 +173,7 @@ internal sealed class AdjustChannelVolumeAction(WaveLinkClient client, ILogger l
 }
 
 internal sealed class ToggleChannelMuteAction(WaveLinkClient client, ILogger logger)
-	: WaveLinkActionBase(client, logger), IActionDefinition, IDynamicOptionsActionDefinition
+	: WaveLinkActionBase(client, logger), IActionDefinition, IDynamicOptionsActionDefinition, IStateProviderActionDefinition
 {
 	public string Id => "toggle-channel-mute";
 
@@ -195,7 +194,33 @@ internal sealed class ToggleChannelMuteAction(WaveLinkClient client, ILogger log
 
 	public MacroDeckPlatform Platforms => MacroDeckPlatform.All;
 
+	public TimeSpan StatePollInterval => TimeSpan.FromSeconds(2);
+
 	public IActionExecutor CreateExecutor() => new Executor(Client, Logger);
+
+	/// <summary>Answers from cache only: never connects, never throws on partial configuration.</summary>
+	public Task<ActionStateSnapshot?> GetActionStateAsync(IReadOnlyDictionary<string, object?> parameters, CancellationToken cancellationToken)
+	{
+		if (parameters.GetValueOrDefault(ChannelParameter) is not string { Length: > 0 } channel)
+		{
+			return Task.FromResult<ActionStateSnapshot?>(null);
+		}
+
+		if (parameters.GetValueOrDefault(MixParameter) is not string { Length: > 0 } mix)
+		{
+			return Task.FromResult<ActionStateSnapshot?>(null);
+		}
+
+		string? active = Client.GetMuteStateId(channel, mix);
+		if (active is null)
+		{
+			return Task.FromResult<ActionStateSnapshot?>(null);
+		}
+
+		return Task.FromResult<ActionStateSnapshot?>(new ActionStateSnapshot(
+			MuteStates(Strings.Actions.ToggleChannelMute.State.Muted(), Strings.Actions.ToggleChannelMute.State.Unmuted()),
+			active));
+	}
 
 	public async Task<DynamicOptionsResult> GetDynamicOptionsAsync(DynamicOptionsContext context, CancellationToken cancellationToken)
 	{
@@ -240,8 +265,10 @@ internal sealed class ToggleChannelMuteAction(WaveLinkClient client, ILogger log
 
 			try
 			{
-				await Client.SetChannelMuteAsync(channel, mix, ParseMuteMode(context.Parameters.GetValueOrDefault(MuteModeParameter)), context.CancellationToken).ConfigureAwait(false);
-				return ActionResult.Success();
+				var mode = ParseMuteMode(context.Parameters.GetValueOrDefault(MuteModeParameter));
+				string? before = Client.GetMuteStateId(channel, mix);
+				await Client.SetChannelMuteAsync(channel, mix, mode, context.CancellationToken).ConfigureAwait(false);
+				return ActionResult.Success(ExpectedMuteStateId(mode, before));
 			}
 			catch (Exception ex)
 			{

@@ -34,6 +34,12 @@
   <data name="Actions.ToggleChannelMute.Description" xml:space="preserve">
     <value>Mutes, unmutes or toggles a Wave Link channel, for one mix or overall.</value>
   </data>
+  <data name="Actions.ToggleChannelMute.State.Muted" xml:space="preserve">
+    <value>Muted</value>
+  </data>
+  <data name="Actions.ToggleChannelMute.State.Unmuted" xml:space="preserve">
+    <value>Unmuted</value>
+  </data>
   <data name="Actions.SetMixVolume.Name" xml:space="preserve">
     <value>Set mix volume</value>
   </data>
@@ -45,6 +51,12 @@
   </data>
   <data name="Actions.ToggleMixMute.Description" xml:space="preserve">
     <value>Mutes, unmutes or toggles the master mute of a Wave Link mix.</value>
+  </data>
+  <data name="Actions.ToggleMixMute.State.Muted" xml:space="preserve">
+    <value>Muted</value>
+  </data>
+  <data name="Actions.ToggleMixMute.State.Unmuted" xml:space="preserve">
+    <value>Unmuted</value>
   </data>
   <data name="Actions.ToggleChannelFx.Name" xml:space="preserve">
     <value>Toggle channel effect</value>

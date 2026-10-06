@@ -673,20 +673,30 @@ public sealed class WaveLinkClient : IAsyncDisposable
 	}
 
 	private static ChannelState FindChannel(Snapshot snapshot, string channelRef) =>
+		TryFindChannel(snapshot, channelRef)
+		?? throw new WaveLinkNotFoundException("channel", channelRef);
+
+	private static ChannelState? TryFindChannel(Snapshot snapshot, string channelRef) =>
 		snapshot.Channels.FirstOrDefault(c =>
 			string.Equals(c.Id, channelRef, StringComparison.OrdinalIgnoreCase))
 		?? snapshot.Channels.FirstOrDefault(c =>
-			string.Equals(c.Name, channelRef, StringComparison.OrdinalIgnoreCase))
-		?? throw new WaveLinkNotFoundException("channel", channelRef);
+			string.Equals(c.Name, channelRef, StringComparison.OrdinalIgnoreCase));
 
 	private static MixState FindMix(Snapshot snapshot, string mixRef) =>
+		TryFindMix(snapshot, mixRef)
+		?? throw new WaveLinkNotFoundException("mix", mixRef);
+
+	private static MixState? TryFindMix(Snapshot snapshot, string mixRef) =>
 		snapshot.Mixes.FirstOrDefault(m =>
 			string.Equals(m.Id, mixRef, StringComparison.OrdinalIgnoreCase))
 		?? snapshot.Mixes.FirstOrDefault(m =>
-			string.Equals(m.Name, mixRef, StringComparison.OrdinalIgnoreCase))
-		?? throw new WaveLinkNotFoundException("mix", mixRef);
+			string.Equals(m.Name, mixRef, StringComparison.OrdinalIgnoreCase));
 
-	private static IReadOnlyList<ChannelMixState> ResolveMixes(Snapshot snapshot, ChannelState channel, string mixRef)
+	private static IReadOnlyList<ChannelMixState> ResolveMixes(Snapshot snapshot, ChannelState channel, string mixRef) =>
+		TryResolveMixes(snapshot, channel, mixRef)
+		?? throw new WaveLinkNotFoundException("mix", $"'{mixRef}' on channel '{channel.Name}'");
+
+	private static IReadOnlyList<ChannelMixState>? TryResolveMixes(Snapshot snapshot, ChannelState channel, string mixRef)
 	{
 		if (string.Equals(mixRef, BothMixes, StringComparison.OrdinalIgnoreCase))
 		{
@@ -706,10 +716,59 @@ public sealed class WaveLinkClient : IAsyncDisposable
 			}
 		}
 
-		return direct is not null
-			? [direct]
-			: throw new WaveLinkNotFoundException("mix", $"'{mixRef}' on channel '{channel.Name}'");
+		return direct is not null ? [direct] : null;
 	}
+
+	public const string MutedStateId = "muted";
+
+	public const string UnmutedStateId = "unmuted";
+
+	/// <summary>Lock-read mute state for buttons: from cache only, never connects, never throws.
+	/// Null when there is nothing to report (no data, unconfigured, or target gone).</summary>
+	public string? GetMuteStateId(string? channelRef, string mixRef)
+	{
+		lock (_cacheLock)
+		{
+			var snapshot = _snapshot;
+			if (snapshot is null)
+			{
+				return null;
+			}
+
+			if (!string.IsNullOrWhiteSpace(channelRef))
+			{
+				var channel = TryFindChannel(snapshot, channelRef);
+				if (channel is null)
+				{
+					return null;
+				}
+
+				if (IsOverall(mixRef))
+				{
+					return MuteStateId(channel.IsMuted
+						?? (channel.Mixes.Count > 0 && channel.Mixes.All(m => m.IsMuted ?? false)));
+				}
+
+				var mixes = TryResolveMixes(snapshot, channel, mixRef);
+				if (mixes is null || mixes.Count == 0)
+				{
+					return null;
+				}
+
+				return MuteStateId(mixes.All(m => m.IsMuted ?? false));
+			}
+
+			if (IsOverall(mixRef) || string.Equals(mixRef, BothMixes, StringComparison.OrdinalIgnoreCase))
+			{
+				return null;
+			}
+
+			var mix = TryFindMix(snapshot, mixRef);
+			return mix is null ? null : MuteStateId(mix.IsMuted ?? false);
+		}
+	}
+
+	private static string MuteStateId(bool muted) => muted ? MutedStateId : UnmutedStateId;
 
 	private static string LastErrorDefault() => "Wave Link is not reachable.";
 

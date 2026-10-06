@@ -142,6 +142,27 @@ internal abstract class WaveLinkActionBase(WaveLinkClient client, ILogger logger
 		new() { Value = "disable", Label = Strings.Fields.FxMode.Disable() },
 	];
 
+	protected static IReadOnlyList<ActionStateDefinition> MuteStates(LocalizedText mutedLabel, LocalizedText unmutedLabel) =>
+	[
+		new ActionStateDefinition(WaveLinkClient.MutedStateId, mutedLabel)
+		{
+			DefaultAppearance = new ActionStateAppearance { BackgroundColor = "#991b1b", LabelColor = "#ffffff" },
+		},
+		new ActionStateDefinition(WaveLinkClient.UnmutedStateId, unmutedLabel)
+		{
+			DefaultAppearance = new ActionStateAppearance { BackgroundColor = "#166534", LabelColor = "#ffffff" },
+		},
+	];
+
+	protected static string ExpectedMuteStateId(MuteMode mode, string? before) => mode switch
+	{
+		MuteMode.Mute => WaveLinkClient.MutedStateId,
+		MuteMode.Unmute => WaveLinkClient.UnmutedStateId,
+		_ => string.Equals(before, WaveLinkClient.MutedStateId, StringComparison.Ordinal)
+			? WaveLinkClient.UnmutedStateId
+			: WaveLinkClient.MutedStateId,
+	};
+
 	protected static ChannelState? SelectedChannel(IReadOnlyDictionary<string, object?> parameters, Snapshot snapshot)
 	{
 		if (parameters.GetValueOrDefault(ChannelParameter) is not string { Length: > 0 } channelRef)
