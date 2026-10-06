@@ -474,7 +474,7 @@ public sealed class WaveLinkClient : IAsyncDisposable
 		builder.AppendLine(CultureInfo.InvariantCulture, $"Connections: {connects}, drops: {drops}");
 		if (since.HasValue)
 		{
-			builder.AppendLine($"Session age: {FormatAge(DateTimeOffset.UtcNow - since.Value)}");
+			builder.AppendLine("Session age: " + FormatAge(DateTimeOffset.UtcNow - since.Value));
 		}
 
 		if (lastError is not null)
@@ -742,6 +742,9 @@ public sealed class WaveLinkClient : IAsyncDisposable
 			_socket = socket;
 		}
 
+		// The receive pump must run before the first RPC leaves: without a concurrent reader,
+		// the handshake response sits in the socket buffer and the call waits out its timeout.
+		var pump = ReceiveLoopAsync(socket, cancellationToken);
 		try
 		{
 			var info = await RpcAsync("getApplicationInfo", null, cancellationToken).ConfigureAwait(false);
@@ -765,7 +768,7 @@ public sealed class WaveLinkClient : IAsyncDisposable
 
 			await RefreshAsync(cancellationToken).ConfigureAwait(false);
 			NoteConnect();
-			await ReceiveLoopAsync(socket, cancellationToken).ConfigureAwait(false);
+			await pump.ConfigureAwait(false);
 		}
 		finally
 		{

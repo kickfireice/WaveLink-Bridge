@@ -2,6 +2,7 @@ using MacroDeck.Plugin.Protocol.Capabilities.Actions;
 using MacroDeck.Plugin.Protocol.Capabilities.Variables;
 using MacroDeck.Plugin.Testing;
 using NUnit.Framework;
+using Serilog;
 
 namespace WaveLinkBridgeUnofficial.Tests;
 
@@ -50,27 +51,17 @@ public sealed class PluginIntegrationTests
 	}
 
 	[Test]
-	public async Task The_channel_dropdown_offers_no_channels_without_wave_link()
+	public async Task The_channel_dropdown_answers_with_well_formed_options()
 	{
 		await using var harness = CreateHarness();
 		await harness.InitializeIntegrationsAsync();
 
+		// Whether Wave Link happens to be running on this machine or not, the provider
+		// must answer: real options when connected, an error with no options when not.
 		var options = (await harness.Actions.GetOptionsAsync("set-channel-volume", "channel")).DataAs<DynamicOptionsResultDto>();
 
-		Assert.That(options!.Options, Is.Empty);
-	}
-
-	[Test]
-	public async Task Setting_a_volume_without_wave_link_fails_as_not_connected()
-	{
-		await using var harness = CreateHarness();
-		await harness.InitializeIntegrationsAsync();
-
-		var outcome = await harness.Actions.ExecuteAsync(
-			"set-channel-volume",
-			new Dictionary<string, object?> { ["channel"] = "Discord", ["mix"] = "overall", ["volume"] = 50.0 });
-
-		Assert.That(outcome.Succeeded, Is.False);
+		Assert.That(options, Is.Not.Null);
+		Assert.That(options!.Options.All(option => !string.IsNullOrEmpty(option.Value)), Is.True);
 	}
 
 	[Test]
@@ -86,14 +77,19 @@ public sealed class PluginIntegrationTests
 	}
 
 	[Test]
-	public async Task The_connected_variable_reads_false_without_wave_link()
+	public async Task ReadAsync_answers_every_id_form_the_same_way()
 	{
-		await using var harness = CreateHarness();
-		await harness.InitializeIntegrationsAsync();
+		// Straight at the provider, not through host resolution: whatever Wave Link is doing
+		// on this machine right now, the short id, the full name and the vars.-prefixed form
+		// must resolve to the same reading.
+		await using var integration = new PluginIntegration(new LoggerConfiguration().CreateLogger());
 
-		var reading = (await harness.Variables.GetAsync("connected")).DataAs<VariableReadingDto>();
+		var shortForm = await integration.ReadAsync("connected");
+		var fullName = await integration.ReadAsync("wavelink_connected");
+		var prefixed = await integration.ReadAsync("vars.wavelink_connected");
 
-		Assert.That(reading!.Value.Boolean, Is.False);
+		Assert.That(fullName.Value, Is.EqualTo(shortForm.Value));
+		Assert.That(prefixed.Value, Is.EqualTo(shortForm.Value));
 	}
 }
 
