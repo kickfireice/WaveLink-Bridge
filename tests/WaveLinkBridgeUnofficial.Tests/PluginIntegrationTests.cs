@@ -110,6 +110,42 @@ public sealed class PluginIntegrationTests
 	}
 
 	[Test]
+	public async Task Mute_state_reports_the_full_trio_when_there_is_live_data()
+	{
+		await using var harness = CreateHarness();
+		await harness.InitializeIntegrationsAsync();
+
+		var connected = (await harness.Variables.GetAsync("connected")).DataAs<VariableReadingDto>();
+		if (connected!.Value.Boolean != true)
+		{
+			Assert.Pass("Wave Link is not running, so there is no live state to report.");
+			return;
+		}
+
+		ActionStateResult? state = null;
+		for (int i = 0; i < 20; i++)
+		{
+			state = (await harness.Actions.GetActionStateAsync("toggle-channel-mute",
+				new Dictionary<string, object?> { ["channel"] = "Brave", ["mix"] = "overall" })).DataAs<ActionStateResult>();
+			if (state!.HasValue)
+			{
+				break;
+			}
+
+			await Task.Delay(500, TestContext.CurrentContext.CancellationToken);
+		}
+
+		if (state!.HasValue != true)
+		{
+			Assert.Pass("No Brave channel right now, so there is no live state to report.");
+			return;
+		}
+
+		Assert.That(state.States.Select(s => s.Id), Is.EquivalentTo(new[] { "muted", "unmuted", "unavailable" }));
+		Assert.That(state.ActiveStateId, Is.EqualTo("muted").Or.EqualTo("unmuted").Or.EqualTo("unavailable"));
+	}
+
+	[Test]
 	public async Task ReadAsync_answers_every_id_form_the_same_way()
 	{
 		// Straight at the provider, not through host resolution: whatever Wave Link is doing

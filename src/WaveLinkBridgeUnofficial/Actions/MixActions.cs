@@ -108,8 +108,9 @@ internal sealed class ToggleMixMuteAction(WaveLinkClient client, ILogger logger)
 
 	public IActionExecutor CreateExecutor() => new Executor(Client, Logger);
 
-	/// <summary>Answers from cache only: never connects, never throws on partial configuration.
-	/// A throw here would fail the widget holding the button, including on save.</summary>
+	/// <summary>Answers from cache only: never connects, never throws. A configured target whose
+	/// mix was seen before always gets the full set (active <c>unavailable</c> when there is
+	/// nothing live to report); only missing params or a never-seen mix answer null.</summary>
 	public Task<ActionStateSnapshot?> GetActionStateAsync(IReadOnlyDictionary<string, object?> parameters, CancellationToken cancellationToken)
 	{
 		try
@@ -119,13 +120,13 @@ internal sealed class ToggleMixMuteAction(WaveLinkClient client, ILogger logger)
 				return Task.FromResult<ActionStateSnapshot?>(null);
 			}
 
-			string? active = Client.GetMuteStateId(channelRef: null, mix);
-			if (active is null)
+			if (!Client.IsMixKnown(mix))
 			{
 				return Task.FromResult<ActionStateSnapshot?>(null);
 			}
 
-		return Task.FromResult<ActionStateSnapshot?>(new ActionStateSnapshot(MuteStates(), active));
+			string active = Client.GetMuteStateId(channelRef: null, mix) ?? WaveLinkClient.UnavailableStateId;
+			return Task.FromResult<ActionStateSnapshot?>(new ActionStateSnapshot(MuteStates(), active));
 		}
 		catch
 		{

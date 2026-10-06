@@ -115,11 +115,21 @@ public sealed class WaveLinkClient : IAsyncDisposable
 		}
 	}
 
-	public bool IsChannelKnown(string channelId)
+	public bool IsChannelKnown(string channelRef)
 	{
 		lock (_cacheLock)
 		{
-			return _knownChannels.ContainsKey(channelId);
+			return _knownChannels.ContainsKey(channelRef) ||
+				_knownChannels.Values.Any(c => string.Equals(c.Name, channelRef, StringComparison.OrdinalIgnoreCase));
+		}
+	}
+
+	public bool IsMixKnown(string mixRef)
+	{
+		lock (_cacheLock)
+		{
+			return _knownMixes.ContainsKey(mixRef) ||
+				_knownMixes.Values.Any(name => string.Equals(name, mixRef, StringComparison.OrdinalIgnoreCase));
 		}
 	}
 
@@ -722,6 +732,8 @@ public sealed class WaveLinkClient : IAsyncDisposable
 	public const string MutedStateId = "muted";
 
 	public const string UnmutedStateId = "unmuted";
+
+	public const string UnavailableStateId = "unavailable";
 
 	/// <summary>Lock-read mute state for buttons: from cache only, never connects, never throws.
 	/// Null when there is nothing to report (no data, unconfigured, or target gone).</summary>

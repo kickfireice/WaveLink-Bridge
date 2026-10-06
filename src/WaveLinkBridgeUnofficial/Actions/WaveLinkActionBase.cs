@@ -142,12 +142,14 @@ internal abstract class WaveLinkActionBase(WaveLinkClient client, ILogger logger
 		new() { Value = "disable", Label = Strings.Fields.FxMode.Disable() },
 	];
 
-	/// <summary>Labels come from <see cref="MacroDeckStrings.States"/> (never own copies) and carry no
-	/// appearance: first-run styling beyond the label has broken widget saves before.</summary>
+	/// <summary>Labels come from <see cref="MacroDeckStrings.States"/> (never own copies). The set is
+	/// always complete: an <c>unavailable</c> third state means a configured target with nothing to
+	/// report reads as a state, never as a missing set.</summary>
 	protected static IReadOnlyList<ActionStateDefinition> MuteStates() =>
 	[
 		new ActionStateDefinition(WaveLinkClient.MutedStateId, MacroDeckStrings.States.Muted()),
 		new ActionStateDefinition(WaveLinkClient.UnmutedStateId, MacroDeckStrings.States.Unmuted()),
+		new ActionStateDefinition(WaveLinkClient.UnavailableStateId, MacroDeckStrings.States.Unavailable()),
 	];
 
 	protected static ChannelState? SelectedChannel(IReadOnlyDictionary<string, object?> parameters, Snapshot snapshot)

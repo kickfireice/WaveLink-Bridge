@@ -198,8 +198,9 @@ internal sealed class ToggleChannelMuteAction(WaveLinkClient client, ILogger log
 
 	public IActionExecutor CreateExecutor() => new Executor(Client, Logger);
 
-	/// <summary>Answers from cache only: never connects, never throws on partial configuration.
-	/// A throw here would fail the widget holding the button, including on save.</summary>
+	/// <summary>Answers from cache only: never connects, never throws. A configured target whose
+	/// channel was seen before always gets the full set (active <c>unavailable</c> when there is
+	/// nothing live to report); only missing params or a never-seen channel answer null.</summary>
 	public Task<ActionStateSnapshot?> GetActionStateAsync(IReadOnlyDictionary<string, object?> parameters, CancellationToken cancellationToken)
 	{
 		try
@@ -214,13 +215,13 @@ internal sealed class ToggleChannelMuteAction(WaveLinkClient client, ILogger log
 				return Task.FromResult<ActionStateSnapshot?>(null);
 			}
 
-			string? active = Client.GetMuteStateId(channel, mix);
-			if (active is null)
+			if (!Client.IsChannelKnown(channel))
 			{
 				return Task.FromResult<ActionStateSnapshot?>(null);
 			}
 
-		return Task.FromResult<ActionStateSnapshot?>(new ActionStateSnapshot(MuteStates(), active));
+			string active = Client.GetMuteStateId(channel, mix) ?? WaveLinkClient.UnavailableStateId;
+			return Task.FromResult<ActionStateSnapshot?>(new ActionStateSnapshot(MuteStates(), active));
 		}
 		catch
 		{
