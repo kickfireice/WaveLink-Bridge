@@ -60,6 +60,7 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 	{
 		_client.SnapshotChanged -= OnWaveLinkChanged;
 		await _client.DisposeAsync().ConfigureAwait(false);
+		_pushGate.Dispose();
 	}
 
 	public IReadOnlyList<VariableDefinition> Variables { get; } =
@@ -351,20 +352,58 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 
 	private void OnWaveLinkChanged()
 	{
-		IVariableSink? sink;
-		string[] ids;
-		lock (_sync)
-		{
-			sink = _sink;
-			ids = [.. _subscribed];
-		}
+		// Fire-and-forget into a serialized queue: overlapping publishes race, and a stale
+		// one finishing last is exactly how a fast drag ends up stuck on an old value.
+		_ = PushSerialAsync();
+	}
 
-		if (sink is null || ids.Length == 0)
+	private readonly SemaphoreSlim _pushGate = new(1, 1);
+
+	private async Task PushSerialAsync()
+	{
+		bool entered;
+		try
+		{
+			entered = await _pushGate.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+		}
+		catch (ObjectDisposedException)
 		{
 			return;
 		}
 
-		_ = PushChannelValuesAsync(sink, ids);
+		if (!entered)
+		{
+			_logger.Debug("A channel volume push was dropped under backlog; the next change or poll corrects it.");
+			return;
+		}
+
+		try
+		{
+			IVariableSink? sink;
+			string[] ids;
+			lock (_sync)
+			{
+				sink = _sink;
+				ids = [.. _subscribed];
+			}
+
+			if (sink is null || ids.Length == 0)
+			{
+				return;
+			}
+
+			await PushChannelValuesAsync(sink, ids).ConfigureAwait(false);
+		}
+		finally
+		{
+			try
+			{
+				_pushGate.Release();
+			}
+			catch (ObjectDisposedException)
+			{
+			}
+		}
 	}
 
 	private async Task PushChannelValuesAsync(IVariableSink sink, string[] ids)

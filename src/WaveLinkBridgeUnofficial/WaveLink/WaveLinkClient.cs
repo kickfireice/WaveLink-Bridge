@@ -1200,6 +1200,35 @@ public sealed class WaveLinkClient : IAsyncDisposable
 		}
 
 		RaiseSnapshotChanged();
+
+		// Wave Link throttles rapid change notifications, so a fast drag can end without a final
+		// event for the value it landed on. Re-read once the burst settles so the cache (and every
+		// push after it) converges on the truth instead of the last event that happened to arrive.
+		ScheduleVerifyRefresh();
+	}
+
+	private int _verifyGeneration;
+
+	private void ScheduleVerifyRefresh()
+	{
+		int generation = Interlocked.Increment(ref _verifyGeneration);
+		_ = Task.Run(async () =>
+		{
+			try
+			{
+				await Task.Delay(1000).ConfigureAwait(false);
+				if (generation != Volatile.Read(ref _verifyGeneration))
+				{
+					return;
+				}
+
+				await RefreshAsync(CancellationToken.None).ConfigureAwait(false);
+			}
+			catch (Exception ex)
+			{
+				_logger.Debug(ex, "Wave Link verify refresh failed; the next poll will correct it.");
+			}
+		});
 	}
 
 	private static Snapshot ApplyOutputDevices(Snapshot snapshot, JsonElement @params)
