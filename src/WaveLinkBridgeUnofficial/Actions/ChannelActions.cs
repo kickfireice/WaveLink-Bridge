@@ -198,28 +198,36 @@ internal sealed class ToggleChannelMuteAction(WaveLinkClient client, ILogger log
 
 	public IActionExecutor CreateExecutor() => new Executor(Client, Logger);
 
-	/// <summary>Answers from cache only: never connects, never throws on partial configuration.</summary>
+	/// <summary>Answers from cache only: never connects, never throws on partial configuration.
+	/// A throw here would fail the widget holding the button, including on save.</summary>
 	public Task<ActionStateSnapshot?> GetActionStateAsync(IReadOnlyDictionary<string, object?> parameters, CancellationToken cancellationToken)
 	{
-		if (parameters.GetValueOrDefault(ChannelParameter) is not string { Length: > 0 } channel)
+		try
+		{
+			if (parameters.GetValueOrDefault(ChannelParameter) is not string { Length: > 0 } channel)
+			{
+				return Task.FromResult<ActionStateSnapshot?>(null);
+			}
+
+			if (parameters.GetValueOrDefault(MixParameter) is not string { Length: > 0 } mix)
+			{
+				return Task.FromResult<ActionStateSnapshot?>(null);
+			}
+
+			string? active = Client.GetMuteStateId(channel, mix);
+			if (active is null)
+			{
+				return Task.FromResult<ActionStateSnapshot?>(null);
+			}
+
+			return Task.FromResult<ActionStateSnapshot?>(new ActionStateSnapshot(
+				MuteStates(Strings.Actions.ToggleChannelMute.State.Muted(), Strings.Actions.ToggleChannelMute.State.Unmuted()),
+				active));
+		}
+		catch
 		{
 			return Task.FromResult<ActionStateSnapshot?>(null);
 		}
-
-		if (parameters.GetValueOrDefault(MixParameter) is not string { Length: > 0 } mix)
-		{
-			return Task.FromResult<ActionStateSnapshot?>(null);
-		}
-
-		string? active = Client.GetMuteStateId(channel, mix);
-		if (active is null)
-		{
-			return Task.FromResult<ActionStateSnapshot?>(null);
-		}
-
-		return Task.FromResult<ActionStateSnapshot?>(new ActionStateSnapshot(
-			MuteStates(Strings.Actions.ToggleChannelMute.State.Muted(), Strings.Actions.ToggleChannelMute.State.Unmuted()),
-			active));
 	}
 
 	public async Task<DynamicOptionsResult> GetDynamicOptionsAsync(DynamicOptionsContext context, CancellationToken cancellationToken)

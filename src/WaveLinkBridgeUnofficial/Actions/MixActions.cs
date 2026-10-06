@@ -108,23 +108,31 @@ internal sealed class ToggleMixMuteAction(WaveLinkClient client, ILogger logger)
 
 	public IActionExecutor CreateExecutor() => new Executor(Client, Logger);
 
-	/// <summary>Answers from cache only: never connects, never throws on partial configuration.</summary>
+	/// <summary>Answers from cache only: never connects, never throws on partial configuration.
+	/// A throw here would fail the widget holding the button, including on save.</summary>
 	public Task<ActionStateSnapshot?> GetActionStateAsync(IReadOnlyDictionary<string, object?> parameters, CancellationToken cancellationToken)
 	{
-		if (parameters.GetValueOrDefault(MixParameter) is not string { Length: > 0 } mix)
+		try
+		{
+			if (parameters.GetValueOrDefault(MixParameter) is not string { Length: > 0 } mix)
+			{
+				return Task.FromResult<ActionStateSnapshot?>(null);
+			}
+
+			string? active = Client.GetMuteStateId(channelRef: null, mix);
+			if (active is null)
+			{
+				return Task.FromResult<ActionStateSnapshot?>(null);
+			}
+
+			return Task.FromResult<ActionStateSnapshot?>(new ActionStateSnapshot(
+				MuteStates(Strings.Actions.ToggleMixMute.State.Muted(), Strings.Actions.ToggleMixMute.State.Unmuted()),
+				active));
+		}
+		catch
 		{
 			return Task.FromResult<ActionStateSnapshot?>(null);
 		}
-
-		string? active = Client.GetMuteStateId(channelRef: null, mix);
-		if (active is null)
-		{
-			return Task.FromResult<ActionStateSnapshot?>(null);
-		}
-
-		return Task.FromResult<ActionStateSnapshot?>(new ActionStateSnapshot(
-			MuteStates(Strings.Actions.ToggleMixMute.State.Muted(), Strings.Actions.ToggleMixMute.State.Unmuted()),
-			active));
 	}
 
 	public async Task<DynamicOptionsResult> GetDynamicOptionsAsync(DynamicOptionsContext context, CancellationToken cancellationToken)
