@@ -3,12 +3,13 @@
 This file must be kept up to date. When a rule here stops matching reality, or a new rule emerges from
 work in this repository, update this file as part of that change rather than leaving it to drift.
 
-This repository is the **starting point for a Macro Deck 3 out-of-process plugin**, and it is
-simultaneously the content of the `dotnet new macrodeck-plugin` template package. The plugin under
-`src/WaveLinkBridgeUnofficial/` is deliberately minimal: one integration and one example action,
-`LogMessageAction`, which exists solely to show the localized shape of an action end to end. It is
-meant to be replaced by the plugin's real first action, not grown into a second sample. Nothing else
-is demonstrated here.
+This repository is **WaveLink Bridge**, a real Macro Deck 3 out-of-process plugin
+(generated from the `dotnet new macrodeck-plugin` template, then grown up). The plugin under
+`src/WaveLinkBridgeUnofficial/` is a full Wave Link 3 integration: a localhost JSON-RPC
+client (`WaveLink/`), nine actions (`Actions/`), three eager variables, and a status
+action for diagnostics. The template's `LogMessageAction` sample is gone; current code
+is the product, not a shape demo. Project-specific lessons live in
+`MACRODECK_PLUGIN_NOTES.md` at the workspace root (outside this repo).
 
 Worked examples of every capability live in the
 [sample plugins repository](https://github.com/Macro-Deck-App/Macro-Deck-Sample-Plugins), not here.
@@ -26,18 +27,19 @@ src/WaveLinkBridgeUnofficial/
   Program.cs             builder chain - a few lines and a RunAsync
   manifest.json          identity, icon, per-platform entrypoints
   macrodeck-build.json   one publish target per declared entrypoint
-  PluginIntegration.cs   the integration: lifecycle and capability opt-ins
-  LogMessageAction.cs    the example action, localized end to end
+  PluginIntegration.cs   the integration: lifecycle, actions, eager variables
+  WaveLink/              localhost JSON-RPC client (connection, cache, diagnostics)
+  Actions/               nine actions plus shared dropdown/error plumbing
   Localization/Strings.resx   default-culture strings; Strings.<tag>.resx per language
-  Assets/icon.svg        the icon the manifest declares
+  Assets/icon.svg        the icon the manifest declares (placeholder until the AI icon lands)
   Properties/launchSettings.json   the single real-host debug profile
 tests/WaveLinkBridgeUnofficial.Tests/
-  PluginIntegrationTests.cs   the plugin builds, the action runs, the catalog is wired
+  PluginIntegrationTests.cs   the plugin builds, actions validate, offline paths fail clean
 ```
 
-The template repository carries two more directories that a generated plugin does not:
-`.template.config/` (the `dotnet new` definition) and `packaging/` (the template package project, kept
-out of the solution on purpose).
+This repository was generated from the template, so unlike the template repository it carries
+neither `.template.config/` (the `dotnet new` definition) nor `packaging/` (the template
+package project).
 
 `.template.config/content/` holds the *only* deliberate copies in this repository: conditional variants
 of `manifest.json` and `macrodeck-build.json`. `dotnet new` selects platforms and omits unsupplied
