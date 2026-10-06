@@ -122,10 +122,12 @@ absolute values.
 
 - **Wave Link runs on Windows.** On macOS/Linux the actions report not-connected;
   the plugin still installs and validates everywhere.
-- **Button and label visuals can lag a few seconds.** Variable-bound widgets refresh
-  on Macro Deck's own cadence (up to ~5 s observed on 3.0.0-beta.15) while direct
-  reads stay instant. This is host-side refresh behavior, not something the plugin
-  can set.
+- **Button and label visuals can lag a few seconds.** Multi-state button states
+  and `wavelink-*` variable labels refresh on Macro Deck's own widget cadence
+  (up to ~5 s observed on 3.0.0-beta.15), even though the bridge pushes state in
+  milliseconds and direct reads are instant. Static buttons react instantly.
+  This is host-side refresh behavior, not something the plugin can set —
+  reported upstream.
 - **First press after an install/restart can hit the reconnect window.** The send
   path waits ~8 s for Wave Link to come back and retries once; only then does it
   fail. Passive state stays instant.
