@@ -120,9 +120,9 @@ absolute values.
 
 ## Known limitations
 
-- **Wave Link runs on Windows.** The plugin ships for Windows (x64) and macOS
-  (Apple silicon); on macOS there is no Wave Link to talk to, so the actions
-  report not-connected there.
+- **Windows only, end to end.** The plugin ships for Windows (x64) because Wave
+  Link itself is Windows-only software — there is nothing to talk to anywhere
+  else.
 - **Button and label visuals can lag a few seconds.** Multi-state button states
   and `wavelink-*` variable labels refresh on Macro Deck's own widget cadence
   (up to ~5 s observed on 3.0.0-beta.15), even though the bridge pushes state in

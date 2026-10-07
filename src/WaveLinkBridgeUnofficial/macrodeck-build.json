@@ -17,23 +17,6 @@
         "bin/publish/win-x64"
       ],
       "output": "bin/publish/win-x64"
-    },
-    "osx-arm64": {
-      "executable": "dotnet",
-      "arguments": [
-        "publish",
-        "WaveLinkBridgeUnofficial.csproj",
-        "-c",
-        "Release",
-        "-r",
-        "osx-arm64",
-        "--self-contained",
-        "false",
-        "-p:UseAppHost=false",
-        "-o",
-        "bin/publish/osx-arm64"
-      ],
-      "output": "bin/publish/osx-arm64"
     }
   }
 }
